@@ -1,0 +1,29 @@
+# dbt port of src/transform.py: raw GDELT JSON -> staging -> weekly marts.
+#
+# Run from the repo root (paths below are relative to it):
+#   dbt build --project-dir dbt --profiles-dir dbt
+#
+# Same guarantees as the Python transform it replaces:
+#   - full recompute: staging are views, marts are tables rebuilt every run,
+#     nothing is appended, so reruns can't duplicate;
+#   - ingested_at comes from the raw file's own fetched_at, never now();
+#   - a zero/missing tier baseline gives a NULL share, never inf.
+
+name: trend_tracker
+version: "1.0.0"
+config-version: 2
+profile: trend_tracker
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+vars:
+  # Overridable so tests can point dbt at a temp dir of synthetic raw files.
+  raw_glob: "data/raw/*.json"
+
+models:
+  trend_tracker:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

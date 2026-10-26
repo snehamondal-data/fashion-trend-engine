@@ -20,6 +20,9 @@ WEEKLY_BASELINE_PATH = MARTS_DIR / "weekly_baseline.parquet"
 WEEKLY_MENTIONS_PATH = MARTS_DIR / "weekly_mentions.parquet"
 TREND_DIFFUSION_CSV = OUTPUT_DIR / "trend_diffusion.csv"
 
+# Built by dbt (dbt/profiles.yml points here); src/export_marts.py reads it.
+WAREHOUSE_PATH = DATA_DIR / "warehouse.duckdb"
+
 GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 GDELT_MODE = "timelinevolraw"
 GDELT_FORMAT = "json"

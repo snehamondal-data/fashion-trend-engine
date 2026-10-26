@@ -10,51 +10,82 @@ attention to move from one tier to the next.
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Config
-        B[config/brands.yaml]
-        T[config/trends.yaml]
+flowchart TB
+    subgraph SRC["Sources"]
+        G["GDELT DOC 2.0 API<br/>daily article counts only"]
+        CFG["config/brands.yaml<br/>config/trends.yaml"]
     end
 
-    G[GDELT DOC 2.0 API<br/>mode=timelinevolraw]
-
-    subgraph Pipeline
-        I[ingest_gdelt.py<br/>rate-limited, cached, validated]
-        R[(data/raw/*.json<br/>append-only, provenance-wrapped)]
-        X[transform.py<br/>full recompute, atomic write]
-        SM[(staging_mentions.parquet)]
-        SB[(staging_baseline.parquet)]
-        WB[(weekly_baseline.parquet)]
-        WM[(weekly_mentions.parquet<br/>raw count + trend_share)]
-        A[analyze.py<br/>sustained-signal detection]
-        O[(data/output/trend_diffusion.csv)]
-        C[charts.py]
-        P[(charts/*.png)]
+    subgraph EXT["Extract (Python)"]
+        I["ingest_gdelt.py + gdelt_client.py<br/>rate limit, retry, validate every body"]
     end
 
-    B --> I
-    T --> I
-    I -->|sequential, 5s floor,<br/>backoff on 429/5xx| G
-    G --> I
+    subgraph BRONZE["Bronze: data/raw"]
+        R[("cached JSON per query<br/>+ fetched_at provenance<br/>never rewritten")]
+    end
+
+    subgraph DBT["Transform: dbt-duckdb, full rebuild every run"]
+        S["Silver: staging views<br/>stg_gdelt__timeline_points<br/>stg_gdelt__mentions / baseline"]
+        WB["Gold: fct_weekly_baseline"]
+        WM["Gold: fct_weekly_mentions<br/>trend_share = mentions / tier baseline"]
+        Q{{"data tests: grain,<br/>one raw file per trend x tier"}}
+    end
+
+    subgraph SERVE["Analyze and serve"]
+        A["analyze.py<br/>sustained signal, tier lags"]
+        CSV[("trend_diffusion.csv")]
+        CH["charts.py: one PNG per trend"]
+        AG["NL query agent<br/>Claude + SELECT-only guardrail"]
+        DASH["Streamlit dashboard"]
+    end
+
+    subgraph SYN["Synthetic retailer layer (synthetic_ prefix, never mixed with real)"]
+        GEN["generator seeded from trend_share<br/>with a planted lag"]
+        SD[("synthetic catalog, sales,<br/>on-hand by size, site searches")]
+        OV["demand overlay mart<br/>+ lag-recovery test"]
+    end
+
+    CFG --> I
+    I <-->|"5s floor, backoff on 429"| G
     I --> R
-    R --> X
-    X --> SM --> WM
-    X --> SB --> WB
+    R --> S
+    S --> WB
+    S --> WM
     WB --> WM
-    WM --> A
-    A --> O
-    WM --> C
-    C --> P
+    Q -.- S
+    WM -->|"export_marts.py<br/>parquet, atomic write"| A
+    A --> CSV
+    WM --> CH
+    WM --> AG
+    CSV --> AG
+    WM -.-> GEN
+    GEN -.-> SD
+    SD -.-> OV
+    WM -.-> OV
+    OV -.-> DASH
+    WM -.-> DASH
+
+    classDef planned stroke-dasharray: 5 5
+    class GEN,SD,OV,DASH planned
 ```
 
-Three layers, kept structurally separate:
-- **raw** (`data/raw/`) — exactly what GDELT returned, wrapped with fetch provenance. Append-only;
-  a cache file is never rewritten in place.
-- **staging** (`data/staging/`) — typed, normalized rows: one per `(trend_id | tier, date)`.
-- **mart** (`data/marts/`) — weekly aggregates, joined into `trend_share` (see below).
+Dashed boxes and arrows are **planned** (a synthetic semi-luxury retailer's demand data, in progress). Everything
+solid runs today.
 
-`transform.py` fully recomputes staging and both marts from whatever is currently in `data/raw/`
-on every run, and writes atomically (temp file + rename). Nothing is ever appended to an existing
+Medallion layers, kept structurally separate:
+- **Bronze** (`data/raw/`) — exactly what GDELT returned, wrapped with fetch provenance. Append-only;
+  a cache file is never rewritten in place.
+- **Silver** (dbt staging views → `data/staging/`) — typed, normalized rows: one per
+  `(trend_id | tier, date)`. The raw JSON schema is declared, not inferred.
+- **Gold** (dbt mart tables → `data/marts/`) — weekly aggregates joined into `trend_share` (see
+  below); `analyze.py` builds lags and classifications on top.
+- **Synthetic** (planned) — a fictional semi-luxury retailer's mock sales data lives under its own `synthetic_` prefix so it
+  can never be joined to real data by accident.
+
+The transform runs in dbt (`make transform-dbt`); `tests/test_dbt_parity.py` asserts it produces
+output identical to the original Python `transform.py`, which is kept for now. Both fully
+recompute staging and both marts from whatever is currently in `data/raw/` on every run, and
+write atomically (temp file + rename). Nothing is ever appended to an existing
 output, so a rerun cannot create duplicates — that guarantee holds by construction, not by a
 dedup step.
 
