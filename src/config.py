@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
 BRANDS_YAML = CONFIG_DIR / "brands.yaml"
 TRENDS_YAML = CONFIG_DIR / "trends.yaml"
+SYNTHETIC_RETAILER_YAML = CONFIG_DIR / "synthetic_retailer.yaml"
 
 DATA_DIR = ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
@@ -22,6 +23,10 @@ TREND_DIFFUSION_CSV = OUTPUT_DIR / "trend_diffusion.csv"
 
 # Built by dbt (dbt/profiles.yml points here); src/export_marts.py reads it.
 WAREHOUSE_PATH = DATA_DIR / "warehouse.duckdb"
+
+# Fictional retailer's generated data (src/synthetic_retailer.py). Its own
+# directory, and its own dbt schema, so it can never mix with real data.
+SYNTHETIC_DIR = DATA_DIR / "synthetic"
 
 GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 GDELT_MODE = "timelinevolraw"

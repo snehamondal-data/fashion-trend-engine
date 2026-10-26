@@ -1,0 +1,57 @@
+# Sage & Blush: a FICTIONAL semi-luxury ("everyday luxury") retailer.
+# Every number generated from this file is synthetic. It exists to test whether
+# the pipeline can recover a known relationship between external press momentum
+# and internal demand -- not to describe any real company.
+#
+# Demand for a trend-tagged product follows its trend's semi_luxury trend_share,
+# planted_lag_weeks later, plus Poisson noise. Core products (trend_id: null)
+# ignore trends entirely and are the negative control: the lag analysis must
+# NOT find a relationship for them.
+
+retailer_name: Sage & Blush
+disclaimer: Fictional retailer. All sales, inventory and search data are synthetic.
+seed: 42
+
+driver_tier: semi_luxury
+planted_lag_weeks: 6
+
+demand:
+  beta: 0.5          # elasticity of demand to the trend index (index 2x mean -> +50%)
+  floor: 0.3         # demand never falls below 30% of base, however quiet the press
+  return_rate: 0.12
+  searches_per_unit: 3.0
+
+inventory:
+  replenish_every_weeks: 4   # top each size back up to par every 4 weeks
+  par_weeks_of_cover: 5      # par = 5 weeks of base demand: the 4-week cycle + 1 safety week,
+                             # so ordinary weeks rarely stock out and trend spikes do
+
+size_curve:                  # share of a product's demand by size; must sum to 1
+  XXS: 0.06
+  XS: 0.16
+  S: 0.28
+  M: 0.28
+  L: 0.15
+  XL: 0.07
+
+products:
+  # --- trend-tagged: one per trend in config/trends.yaml ---
+  - {sku_id: SB-001, product_name: Suede Wrap Mini Skirt,          category: Skirts,    attribute_type: material,   attribute: Suede,            trend_id: suede,             price: 148, base_weekly_units: 40, search_term: wrap mini skirt}
+  - {sku_id: SB-002, product_name: Faux Fur Cropped Jacket,        category: Outerwear, attribute_type: material,   attribute: Faux fur,         trend_id: statement_fur,     price: 228, base_weekly_units: 18, search_term: cropped jacket}
+  - {sku_id: SB-003, product_name: Shearling-Collar Car Coat,      category: Outerwear, attribute_type: material,   attribute: Shearling,        trend_id: shearling_texture, price: 298, base_weekly_units: 14, search_term: car coat}
+  - {sku_id: SB-004, product_name: Plum Ribbed Midi Dress,         category: Dresses,   attribute_type: color,      attribute: Purple,           trend_id: purple,            price: 128, base_weekly_units: 30, search_term: ribbed midi dress}
+  - {sku_id: SB-005, product_name: Oxblood Satin Slip Skirt,       category: Skirts,    attribute_type: color,      attribute: Oxblood,          trend_id: oxblood,           price: 98,  base_weekly_units: 35, search_term: slip skirt}
+  - {sku_id: SB-006, product_name: Moss Merino Crewneck,           category: Knitwear,  attribute_type: color,      attribute: Olive green,      trend_id: olive_moss,        price: 118, base_weekly_units: 32, search_term: merino crewneck}
+  - {sku_id: SB-007, product_name: Tailored Wool Skirt Suit,       category: Suiting,   attribute_type: silhouette, attribute: Skirt suit,       trend_id: skirt_suit,        price: 248, base_weekly_units: 12, search_term: wool suit}
+  - {sku_id: SB-008, product_name: Satin-Lapel Tuxedo Blazer,      category: Suiting,   attribute_type: silhouette, attribute: Tuxedo,           trend_id: le_smoking,        price: 238, base_weekly_units: 15, search_term: tuxedo blazer}
+  - {sku_id: SB-009, product_name: Equestrian Jodhpur Trouser,     category: Bottoms,   attribute_type: silhouette, attribute: Equestrian,       trend_id: equestrian,        price: 138, base_weekly_units: 16, search_term: jodhpur trouser}
+  - {sku_id: SB-010, product_name: Leopard Print Silk Blouse,      category: Tops,      attribute_type: print,      attribute: Leopard,          trend_id: leopard,           price: 118, base_weekly_units: 28, search_term: silk blouse}
+  - {sku_id: SB-011, product_name: Tartan Pleated Midi Skirt,      category: Skirts,    attribute_type: print,      attribute: Tartan,           trend_id: plaid,             price: 128, base_weekly_units: 26, search_term: pleated midi skirt}
+  - {sku_id: SB-012, product_name: Crystal Brooch Cardigan,        category: Knitwear,  attribute_type: detail,     attribute: Brooch,           trend_id: brooch,            price: 138, base_weekly_units: 20, search_term: cardigan}
+  - {sku_id: SB-013, product_name: Velvet Bias-Cut Midi Dress,     category: Dresses,   attribute_type: material,   attribute: Velvet,           trend_id: velvet,            price: 158, base_weekly_units: 24, search_term: bias cut dress}
+  - {sku_id: SB-014, product_name: Sheer Mesh Layering Top,        category: Tops,      attribute_type: material,   attribute: Sheer,            trend_id: sheer_layering,    price: 68,  base_weekly_units: 38, search_term: mesh top}
+  # --- core: no trend, the negative control ---
+  - {sku_id: SB-101, product_name: Everyday Contour Bodysuit,      category: Tops,      attribute_type: core,       attribute: Core,             trend_id: null,              price: 58,  base_weekly_units: 60, search_term: bodysuit}
+  - {sku_id: SB-102, product_name: Relaxed Wide-Leg Trouser,       category: Bottoms,   attribute_type: core,       attribute: Core,             trend_id: null,              price: 128, base_weekly_units: 50, search_term: wide leg trouser}
+  - {sku_id: SB-103, product_name: Cotton Poplin Shirt,            category: Tops,      attribute_type: core,       attribute: Core,             trend_id: null,              price: 88,  base_weekly_units: 45, search_term: poplin shirt}
+  - {sku_id: SB-104, product_name: Cashmere Crew Sweater,          category: Knitwear,  attribute_type: core,       attribute: Core,             trend_id: null,              price: 168, base_weekly_units: 30, search_term: cashmere sweater}

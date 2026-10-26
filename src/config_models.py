@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Union
 import yaml
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
-from src.config import BRANDS_YAML, TIERS, TRENDS_YAML
+from src.config import BRANDS_YAML, SYNTHETIC_RETAILER_YAML, TIERS, TRENDS_YAML
 
 
 class ConfigError(Exception):
@@ -121,3 +121,77 @@ class TrendsConfig(BaseModel):
             return cls.model_validate(raw)
         except Exception as exc:
             raise ConfigError(f"{path} failed schema validation: {exc}") from exc
+
+
+# --- synthetic_retailer.yaml ---
+
+
+class SyntheticDemand(BaseModel):
+    beta: float = Field(gt=0)
+    floor: float = Field(ge=0, lt=1)
+    return_rate: float = Field(ge=0, lt=1)
+    searches_per_unit: float = Field(gt=0)
+
+
+class SyntheticInventory(BaseModel):
+    replenish_every_weeks: int = Field(ge=1)
+    par_weeks_of_cover: float = Field(gt=0)
+
+
+class SyntheticProduct(BaseModel):
+    sku_id: str
+    product_name: str
+    category: str
+    attribute_type: str
+    attribute: str
+    trend_id: Optional[str]  # None = core product, the negative control
+    price: float = Field(gt=0)
+    base_weekly_units: float = Field(gt=0)
+    search_term: str
+
+
+class SyntheticRetailerConfig(BaseModel):
+    retailer_name: str
+    disclaimer: str
+    seed: int
+    driver_tier: str
+    planted_lag_weeks: int = Field(ge=0, le=26)
+    demand: SyntheticDemand
+    inventory: SyntheticInventory
+    size_curve: Dict[str, float]
+    products: List[SyntheticProduct] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check(self) -> "SyntheticRetailerConfig":
+        if self.driver_tier not in TIERS:
+            raise ValueError(f"driver_tier '{self.driver_tier}' is not one of {TIERS}")
+        total = sum(self.size_curve.values())
+        if abs(total - 1.0) > 1e-9 or any(w <= 0 for w in self.size_curve.values()):
+            raise ValueError(f"size_curve weights must be positive and sum to 1, got {total}")
+        skus = [p.sku_id for p in self.products]
+        dupes = {s for s in skus if skus.count(s) > 1}
+        if dupes:
+            raise ValueError(f"duplicate sku_ids: {sorted(dupes)}")
+        if all(p.trend_id is not None for p in self.products):
+            raise ValueError("no core (trend_id: null) products: the negative control is missing")
+        return self
+
+    @classmethod
+    def from_yaml(
+        cls, path: Path = SYNTHETIC_RETAILER_YAML, trends: Optional[TrendsConfig] = None
+    ) -> "SyntheticRetailerConfig":
+        try:
+            raw = yaml.safe_load(path.read_text())
+        except (OSError, yaml.YAMLError) as exc:
+            raise ConfigError(f"Could not read/parse {path}: {exc}") from exc
+        try:
+            cfg = cls.model_validate(raw)
+        except Exception as exc:
+            raise ConfigError(f"{path} failed schema validation: {exc}") from exc
+        # Cross-file check: a typo'd trend_id would otherwise silently become a
+        # product whose driver is all zeros.
+        known = {t.id for t in (trends or TrendsConfig.from_yaml()).trends}
+        unknown = sorted({p.trend_id for p in cfg.products if p.trend_id and p.trend_id not in known})
+        if unknown:
+            raise ConfigError(f"{path} references trend_ids not in trends.yaml: {unknown}")
+        return cfg

@@ -33,7 +33,10 @@ config/*.yaml → ingest_gdelt → data/raw/*.json → transform → data/stagin
 | `src/gdelt_models.py` | Response schemas + the two error types. |
 | `src/gdelt_client.py` | **Only** module that makes network calls. Rate limit, retry, cache. |
 | `src/ingest_gdelt.py` | Orchestrates 45 tasks: 3 tier baselines + 14 trends × 3 tiers. |
-| `src/transform.py` | raw → staging → weekly marts. Full recompute, atomic writes. |
+| `src/transform.py` | raw → staging → weekly marts. Full recompute, atomic writes. Kept as the parity reference. |
+| `dbt/` | dbt-duckdb port of transform (`make transform-dbt`) + the `synthetic` schema. |
+| `src/export_marts.py` | DuckDB warehouse → the same parquet marts, atomically. |
+| `src/synthetic_retailer.py` | Sage & Blush (**fictional**) sales/inventory/searches, driven by real `trend_share` with a planted lag. |
 | `src/analyze.py` | Sustained-signal detection, tier lags, classification. |
 | `src/charts.py` | One PNG per trend, three tier lines each. |
 | `src/agent_db.py` | DuckDB views over the marts, parsed SELECT-only guardrail, coverage, query log. |
@@ -129,7 +132,11 @@ full rate-limited sweep.
 - **44 of 45 queries cached**, 1 missing: `le_smoking`/`affordable` (HTTP 429 after 4 attempts).
   Rerun `make ingest` to retry it; it skips what's cached.
 - 13 of 14 trends have all three tiers. `le_smoking` is the only partial one.
-- `transform` / `analyze` / `charts` all run clean. **47 tests pass.**
+- `transform` / `analyze` / `charts` all run clean. **69 tests pass** (run under `arch -x86_64`: the venv is Intel).
+- dbt port matches `transform.py` exactly (values + dtypes); `trend_diffusion.csv` byte-identical.
+- Synthetic layer: the 6-week planted lag is recovered for 14/14 trends on searches at the semi-luxury
+  tier (median r 0.96), against a 0.53 chance ceiling from the core-product negative control. Other
+  tiers mostly don't clear it. Sales recover it less cleanly (stockouts cap them) — by design.
 - The orphaned luxury-baseline cache file has been deleted and the marts/charts rebuilt; luxury
   `trend_share` is now correct (it was exactly half). Lag table was unaffected either way.
 - ⚠️ **The README's Findings table is stale.** It was written against the earlier 7-trend subset.
