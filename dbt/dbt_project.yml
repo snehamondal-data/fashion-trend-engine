@@ -16,10 +16,13 @@ profile: trend_tracker
 
 model-paths: ["models"]
 test-paths: ["tests"]
+macro-paths: ["macros"]
 
 vars:
   # Overridable so tests can point dbt at a temp dir of synthetic raw files.
   raw_glob: "data/raw/*.json"
+  # Written by src/synthetic_retailer.py (make synthetic).
+  synthetic_dir: "data/synthetic"
 
 models:
   trend_tracker:
@@ -27,3 +30,9 @@ models:
       +materialized: view
     marts:
       +materialized: table
+    # Fictional retailer (Sage & Blush). Own schema + tag: nothing synthetic
+    # lands in `main` next to real data, and `make transform-dbt` excludes it.
+    synthetic:
+      +schema: synthetic
+      +tags: [synthetic]
+      +materialized: view

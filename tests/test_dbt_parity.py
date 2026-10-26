@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-dbt_main = pytest.importorskip("dbt.cli.main")
+pytest.importorskip("dbt.cli.main")
 
 from src import export_marts, transform
 from src.gdelt_models import (
@@ -20,8 +20,6 @@ from src.gdelt_models import (
     GDELTTimelineResponse,
     GDELTTimelineSeries,
 )
-
-DBT_PROJECT = Path(__file__).resolve().parent.parent / "dbt"
 
 WEEK1_MON = "20260105"
 WEEK2_MON = "20260112"
@@ -47,24 +45,9 @@ def _write_raw(raw_dir: Path, trend_id: str, tier: str, points, fetched_at="2026
     return path
 
 
-def _dbt_build(raw_dir: Path, tmp_path: Path, monkeypatch) -> tuple:
-    warehouse = tmp_path / "warehouse.duckdb"
-    monkeypatch.setenv("TREND_DUCKDB_PATH", str(warehouse))
-    result = dbt_main.dbtRunner().invoke(
-        [
-            "build",
-            "--project-dir", str(DBT_PROJECT),
-            "--profiles-dir", str(DBT_PROJECT),
-            "--target-path", str(tmp_path / "target"),
-            "--log-path", str(tmp_path / "logs"),
-            # Partial parse caches env_var() values; a stale warehouse path
-            # from a previous test would silently be reused.
-            "--no-partial-parse",
-            "--quiet",
-            "--vars", f"{{raw_glob: '{raw_dir}/*.json'}}",
-        ]
-    )
-    return result, warehouse
+def _dbt_build(run_dbt, raw_dir: Path) -> tuple:
+    # The synthetic models read generator output that isn't in this temp dir.
+    return run_dbt({"raw_glob": f"{raw_dir}/*.json"}, exclude="tag:synthetic")
 
 
 def _outputs(base: Path) -> dict:
@@ -78,7 +61,7 @@ def raw_dir(tmp_path):
     return d
 
 
-def test_dbt_matches_python_transform(tmp_path, raw_dir, monkeypatch):
+def test_dbt_matches_python_transform(tmp_path, raw_dir, run_dbt):
     # Covers: same-week summing, a zero-baseline week (NULL share), a gap week,
     # a baseline week with no trend rows, and two tiers.
     _write_raw(raw_dir, "_baseline", "luxury", [
@@ -98,7 +81,7 @@ def test_dbt_matches_python_transform(tmp_path, raw_dir, monkeypatch):
     db_dir = tmp_path / "dbt_out"
     transform.run(raw_dir=raw_dir, **_outputs(py_dir))
 
-    result, warehouse = _dbt_build(raw_dir, tmp_path, monkeypatch)
+    result, warehouse = _dbt_build(run_dbt, raw_dir)
     assert result.success, result.exception
     export_marts.run(warehouse_path=warehouse, **_outputs(db_dir))
 
@@ -111,24 +94,24 @@ def test_dbt_matches_python_transform(tmp_path, raw_dir, monkeypatch):
     assert math.isnan(wm.loc[("luxury", pd.Timestamp(WEEK2_MON)), "trend_share"])
 
 
-def test_dbt_build_fails_on_orphaned_cache_file(tmp_path, raw_dir, monkeypatch):
+def test_dbt_build_fails_on_orphaned_cache_file(tmp_path, raw_dir, run_dbt):
     # Two baseline files for one tier: what an edited query leaves behind.
     # transform.py would silently sum both; dbt must refuse.
     _write_raw(raw_dir, "_baseline", "luxury", [(f"{WEEK1_MON}T000000Z", 100.0, 1.0)], suffix="old")
     _write_raw(raw_dir, "_baseline", "luxury", [(f"{WEEK1_MON}T000000Z", 100.0, 1.0)], suffix="new")
     _write_raw(raw_dir, "suede", "luxury", [(f"{WEEK1_MON}T000000Z", 10.0, 1.0)])
 
-    result, _ = _dbt_build(raw_dir, tmp_path, monkeypatch)
+    result, _ = _dbt_build(run_dbt, raw_dir)
     assert not result.success
     failed = {r.node.name for r in result.result if r.status == "fail"}
     assert "assert_one_raw_file_per_trend_tier" in failed
 
 
-def test_dbt_build_fails_on_malformed_filename(tmp_path, raw_dir, monkeypatch):
+def test_dbt_build_fails_on_malformed_filename(tmp_path, raw_dir, run_dbt):
     _write_raw(raw_dir, "_baseline", "luxury", [(f"{WEEK1_MON}T000000Z", 100.0, 1.0)])
     (raw_dir / "_baseline__luxury__0.json").rename(raw_dir / "not_a_cache_name.json")
 
-    result, _ = _dbt_build(raw_dir, tmp_path, monkeypatch)
+    result, _ = _dbt_build(run_dbt, raw_dir)
     assert not result.success
     failed = {r.node.name for r in result.result if r.status == "fail"}
     assert "assert_raw_filenames_well_formed" in failed
