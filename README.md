@@ -10,7 +10,7 @@ attention to move from one tier to the next.
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph SRC["Sources"]
         G["GDELT DOC 2.0 API<br/>daily article counts only"]
         CFG["config/brands.yaml<br/>config/trends.yaml"]
@@ -39,7 +39,7 @@ flowchart LR
         DASH["Streamlit dashboard"]
     end
 
-    subgraph SYN["Synthetic Aritzia layer (synthetic_ prefix, never mixed with real)"]
+    subgraph SYN["Synthetic retailer layer (synthetic_ prefix, never mixed with real)"]
         GEN["generator seeded from trend_share<br/>with a planted lag"]
         SD[("synthetic catalog, sales,<br/>on-hand by size, site searches")]
         OV["demand overlay mart<br/>+ lag-recovery test"]
@@ -69,7 +69,7 @@ flowchart LR
     class GEN,SD,OV,DASH planned
 ```
 
-Dashed boxes and arrows are **planned** (the Aritzia demand extension, in progress). Everything
+Dashed boxes and arrows are **planned** (a synthetic semi-luxury retailer's demand data, in progress). Everything
 solid runs today.
 
 Medallion layers, kept structurally separate:
@@ -79,7 +79,7 @@ Medallion layers, kept structurally separate:
   `(trend_id | tier, date)`. The raw JSON schema is declared, not inferred.
 - **Gold** (dbt mart tables → `data/marts/`) — weekly aggregates joined into `trend_share` (see
   below); `analyze.py` builds lags and classifications on top.
-- **Synthetic** (planned) — mock Aritzia retail data lives under its own `synthetic_` prefix so it
+- **Synthetic** (planned) — a fictional semi-luxury retailer's mock sales data lives under its own `synthetic_` prefix so it
   can never be joined to real data by accident.
 
 The transform runs in dbt (`make transform-dbt`); `tests/test_dbt_parity.py` asserts it produces
