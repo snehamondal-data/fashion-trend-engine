@@ -1,4 +1,4 @@
-.PHONY: ingest transform analyze charts all test clean agent eval eval-dry
+.PHONY: ingest transform transform-dbt analyze charts all test clean agent eval eval-dry
 
 VENV := .venv/bin
 
@@ -7,6 +7,13 @@ ingest:
 
 transform:
 	$(VENV)/python -m src.transform
+
+# dbt port of `transform`: builds data/warehouse.duckdb, runs the data tests
+# (orphaned cache files fail the build), then exports the same parquet marts.
+# tests/test_dbt_parity.py asserts its output is identical to `transform`.
+transform-dbt:
+	$(VENV)/dbt build --project-dir dbt --profiles-dir dbt
+	$(VENV)/python -m src.export_marts
 
 analyze:
 	$(VENV)/python -m src.analyze

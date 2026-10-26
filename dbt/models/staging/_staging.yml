@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: stg_gdelt__timeline_points
+    description: >
+      Every point from every raw GDELT cache file (mode=timelinevolraw: daily
+      article counts only, no article content). Trend and tier come from the
+      cache filename; ingested_at from the file's own fetch provenance.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [source_file, date]
+    columns:
+      - name: trend_id
+        description: Trend id from config/trends.yaml, or '_baseline' for the brands-only query.
+        data_tests: [not_null]
+      - name: tier
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [luxury, semi_luxury, affordable]
+      - name: date
+        data_tests: [not_null]
+      - name: value
+        description: Article count GDELT matched that day.
+        data_tests: [not_null]
+      - name: norm
+        description: Total articles GDELT monitored that day (unused downstream).
+      - name: ingested_at
+        description: meta.fetched_at of the raw file, not transform time.
+        data_tests: [not_null]
+      - name: source_file
+        description: Raw cache file path, kept for lineage.
+
+  - name: stg_gdelt__mentions
+    description: Trend-query points (everything except the baseline).
+
+  - name: stg_gdelt__baseline
+    description: Brands-only baseline points, one series per tier.

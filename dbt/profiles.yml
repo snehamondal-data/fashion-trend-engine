@@ -1,0 +1,10 @@
+# Checked in on purpose: local DuckDB needs no credentials. A Snowflake target
+# would go here too, reading secrets from env_var() rather than this file.
+trend_tracker:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Overridable so tests build into a throwaway database.
+      path: "{{ env_var('TREND_DUCKDB_PATH', 'data/warehouse.duckdb') }}"
+      threads: 1

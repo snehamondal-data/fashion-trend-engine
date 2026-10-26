@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: fct_weekly_baseline
+    description: Weekly brands-only press volume per tier. Grain is tier x week_start (Monday).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [tier, week_start]
+    columns:
+      - name: baseline_mention_count
+        data_tests: [not_null]
+
+  - name: fct_weekly_mentions
+    description: >
+      Weekly trend mentions per tier, normalized by that tier's baseline.
+      trend_share is the metric everything downstream uses; raw counts would
+      make luxury the first mover for every trend just because it gets more press.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [trend_id, tier, week_start]
+    columns:
+      - name: mention_count
+        data_tests: [not_null]
+      - name: trend_share
+        description: >
+          mention_count / baseline_mention_count. NULL when the tier's
+          baseline that week was zero or missing (undefined, not zero).
