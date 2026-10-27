@@ -29,6 +29,20 @@ semi_luxury:            # contemporary / "everyday luxury"
     search_term: "COS fashion"
   - Toteme
 
+mid_market:             # footwear & accessories, ~$80-400. Added for the suede-in-bags-and-shoes
+                        # question: luxury material trends seem to land here, not at Zara/H&M.
+                        # Partly a category, not a price rung -- excluded from classification.
+  - name: Dolce Vita     # also an Italian phrase ("la dolce vita"); disambiguate
+    search_term: "Dolce Vita shoes"
+  - Tony Bianco
+  - Steve Madden
+  - Sam Edelman
+  - name: Coach          # common word (sports coaches); disambiguate
+    search_term: "Coach handbag"
+  - Kate Spade
+  # Michael Kors left out: it also shows on the runway and is cited as luxury
+  # evidence in trends.yaml, so its press would blur the tier.
+
 affordable:
   - Zara
   - H&M

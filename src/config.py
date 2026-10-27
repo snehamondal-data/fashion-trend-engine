@@ -52,7 +52,10 @@ MAX_CONSECUTIVE_TASK_FAILURES = 3
 # Sentinel trend_id used for the brands-only baseline query per tier.
 BASELINE_TREND_ID = "_baseline"
 
-TIERS = ("luxury", "semi_luxury", "affordable")
+# mid_market (footwear & accessories) was added after the original three. It is
+# partly a category, not just a price rung, so analyze.py measures it fully but
+# keeps it out of the luxury -> semi -> affordable classification.
+TIERS = ("luxury", "semi_luxury", "mid_market", "affordable")
 
 # --- Sustained-signal detection (analyze.py) ---
 # A week is "elevated" if its 3-week rolling mean share exceeds the trailing
