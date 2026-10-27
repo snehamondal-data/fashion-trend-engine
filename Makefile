@@ -1,4 +1,4 @@
-.PHONY: ingest transform transform-dbt synthetic analyze charts all test clean agent eval eval-dry
+.PHONY: ingest transform transform-dbt synthetic dashboard analyze charts all test clean agent eval eval-dry
 
 VENV := .venv/bin
 
@@ -21,6 +21,11 @@ transform-dbt:
 synthetic:
 	$(VENV)/python -m src.synthetic_retailer
 	$(VENV)/dbt build --project-dir dbt --profiles-dir dbt --select tag:synthetic
+
+# Static dashboard for GitHub Pages: marts + warehouse -> docs/index.html.
+# Run after synthetic and analyze.
+dashboard:
+	$(VENV)/python -m src.dashboard
 
 analyze:
 	$(VENV)/python -m src.analyze
