@@ -21,6 +21,8 @@ macro-paths: ["macros"]
 vars:
   # Overridable so tests can point dbt at a temp dir of synthetic raw files.
   raw_glob: "data/raw/*.json"
+  # Mirrors MIN_BASELINE_ARTICLES in src/config.py (parity test keeps them equal).
+  min_baseline_articles: 5
   # Written by src/synthetic_retailer.py (make synthetic).
   synthetic_dir: "data/synthetic"
 

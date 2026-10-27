@@ -112,6 +112,8 @@ def _week_delta(start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]) -> O
 
 
 def classify(tier_signals: dict) -> str:
+    # mid_market is deliberately absent: it is a footwear/accessories segment,
+    # not a rung on the price ladder, and adding it must not reclassify trends.
     if tier_signals["affordable"].first_signal_week is not None:
         return "mass"
     if tier_signals["semi_luxury"].first_signal_week is not None:
@@ -139,11 +141,19 @@ def analyze_trend(trend_id: str, weekly_mentions_df: pd.DataFrame, weekly_baseli
         "semi_luxury_peak_week": tier_signals["semi_luxury"].peak_week,
         "affordable_first_signal_week": tier_signals["affordable"].first_signal_week,
         "affordable_peak_week": tier_signals["affordable"].peak_week,
+        "mid_market_first_signal_week": tier_signals["mid_market"].first_signal_week,
+        "mid_market_peak_week": tier_signals["mid_market"].peak_week,
         "lag_luxury_to_semi_weeks": _week_delta(
             tier_signals["luxury"].first_signal_week, tier_signals["semi_luxury"].first_signal_week
         ),
         "lag_semi_to_affordable_weeks": _week_delta(
             tier_signals["semi_luxury"].first_signal_week, tier_signals["affordable"].first_signal_week
+        ),
+        "lag_luxury_to_mid_market_weeks": _week_delta(
+            tier_signals["luxury"].first_signal_week, tier_signals["mid_market"].first_signal_week
+        ),
+        "lag_semi_to_mid_market_weeks": _week_delta(
+            tier_signals["semi_luxury"].first_signal_week, tier_signals["mid_market"].first_signal_week
         ),
         "classification": classify(tier_signals),
     }

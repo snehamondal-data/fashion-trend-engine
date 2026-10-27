@@ -7,6 +7,10 @@ for trend momentum — not sales data, not social media, just how much the press
 a given trend in the context of a given brand tier, and how many weeks it takes for that
 attention to move from one tier to the next.
 
+**[Open the interactive dashboard →](https://snehamondal-data.github.io/fashion-trend-engine/)**
+Press momentum per trend and tier, the lag table, and the synthetic-retailer demand test, on one
+page. Built from the marts by `make dashboard`.
+
 ## Architecture
 
 ```mermaid
@@ -151,8 +155,8 @@ documented source of noise in the luxury baseline and any trend involving that b
 
 **Full-recompute idempotency over incremental upsert.** `transform.py` always rebuilds staging
 and both marts from the entire `data/raw/` directory rather than merging new rows into existing
-parquet files. Simpler than upsert/merge logic, and correct at this data scale (14 trends × 3
-tiers + 3 baselines = 45 raw files).
+parquet files. Simpler than upsert/merge logic, and correct at this data scale (14 trends × 4
+tiers + 4 baselines = 60 raw files).
 
 **Provenance on every row.** Each raw cache file wraps the GDELT response with `query`,
 `timespan`, `url`, and `fetched_at` (UTC). `fetched_at` is written once, at actual fetch time, and
@@ -183,11 +187,14 @@ identical raw inputs produce different output and break the idempotency guarante
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-make ingest      # fetch + cache all 45 GDELT queries (sequential, ~5s/request minimum)
-make transform   # raw -> staging -> weekly marts (idempotent, full recompute)
-make analyze     # weekly marts -> data/output/trend_diffusion.csv
-make charts      # weekly marts -> charts/*.png (3 tier lines per trend)
-make all         # the above four, in order
+make ingest         # fetch + cache all 60 GDELT queries (sequential, ~5s/request minimum)
+make transform-dbt  # raw -> staging -> weekly marts in dbt, data tests, parquet export
+make analyze        # weekly marts -> data/output/trend_diffusion.csv
+make charts         # weekly marts -> charts/*.png (one line per tier)
+make synthetic      # Sage & Blush synthetic retail data + lag-recovery marts (dbt `synthetic` schema)
+make dashboard      # everything above -> docs/index.html (the GitHub Pages dashboard)
+make transform      # the original pandas transform; kept as the dbt parity reference
+make all            # ingest, transform, analyze, charts
 make test        # pytest -- all synthetic fixtures, no network calls
 
 make agent Q="'which trends reached the affordable tier fastest?'"   # ask the marts
@@ -197,7 +204,7 @@ make eval-dry    # print eval cases + ground truth, no API calls
 
 Each module is also runnable standalone, e.g. `python -m src.ingest_gdelt` (optionally
 `python -m src.ingest_gdelt 5` to run only the first 5 tasks — useful for a smoke test before
-committing to the full 45-query, rate-limited sweep).
+committing to the full 60-query, rate-limited sweep).
 
 ## Query agent
 
@@ -238,86 +245,92 @@ ground-truth SQL at run time rather than pasted in as literals, since incrementa
 hard-coded numbers into false failures. `make eval-dry` prints the cases and their ground truth
 without spending any tokens.
 
+## Synthetic retailer test (Sage & Blush)
+
+The business question behind this project is whether a retailer could use press momentum as an
+early demand signal. Real sales data isn't available, so the method is tested on a **fictional**
+semi-luxury retailer, Sage & Blush, whose answer is known in advance.
+
+- **Generated from real data, with a planted delay.** Each of 14 products is tied to one trend
+  (a suede wrap skirt, an oxblood slip skirt...). Its weekly demand follows that trend's real
+  semi-luxury `trend_share`, delayed by **6 weeks**, plus noise
+  (`config/synthetic_retailer.yaml`, `src/synthetic_retailer.py`).
+- **Realistic in the way that matters.** Sales are capped by stock on hand, so a trend spike sells
+  out core sizes and sales then *understate* demand. Site searches aren't capped.
+- **A negative control.** Four core products (a bodysuit, a poplin shirt...) ignore trends
+  entirely. Testing them against every trend, tier and delay shows how strong a correlation
+  chance alone produces.
+- **The analysis isn't told the delay.** `mart_synthetic__lag_correlation` correlates press in
+  week *t* with demand in week *t + k* for k = 0–12, for every tier;
+  `mart_synthetic__recovered_lag` picks the best k.
+
+**Result:** the 6-week delay is recovered for all 14 trends from searches, at the semi-luxury tier
+(median r 0.96), well above the 0.53 that the core products reached by chance across 2,184 tries.
+The other tiers mostly don't clear that ceiling, so the method also finds *which* tier drives
+demand. Using sales instead of searches, some trends point to the wrong delay: stockouts cap
+sales exactly when demand peaks, which is why search data is the better early signal.
+
+What this does and doesn't show: it proves the method *can* find a delay when one exists. The
+synthetic world is cleaner than a real one (correlations near 1), so it says nothing about how
+any real retailer's demand behaves. That needs real data. All synthetic data is labelled as such,
+lives in its own `synthetic` dbt schema, and is generated deterministically (seeded, with input
+hashes in a manifest). `tests/test_synthetic_retailer.py` plants a 4-week delay end to end, so
+nothing passes by having the answer hard-coded.
+
 ## Findings
 
-**Coverage is now 13 of 14 trends (44 of 45 queries cached).** Only `le_smoking` is still
-incomplete, missing its `affordable` tier — GDELT returned HTTP 429 on that one query after four
-attempts. Rerunning `make ingest` resumes from cache and retries only what's missing.
+All 60 GDELT queries are in: 14 trends × 4 tiers, plus a baseline per tier. Per-trend numbers,
+charts and the lag table are on the **[dashboard](https://snehamondal-data.github.io/fashion-trend-engine/)**
+and in `data/output/trend_diffusion.csv`. Lags are weeks between one tier's first *sustained*
+breakout and the next tier's; positive means the cheaper tier followed.
 
-> **The table and analysis below were written against an earlier 7-trend subset and have not been
-> regenerated.** The six trends that filled in since (`equestrian`, `leopard`, `plaid`, `brooch`,
-> `velvet`, `sheer_layering`) all classify as `mass`, and they do **not** reproduce the
-> semi→affordable pattern described below: across all 11 trends that now have a semi→affordable
-> lag, 5 are negative and 6 positive, ranging −10 to +36. The luxury→semi finding, by contrast,
-> holds and strengthens — 6 of 9 lags are negative. See `data/output/trend_diffusion.csv` for the
-> current numbers; the prose below is kept as written rather than quietly restated.
+| Step | Trends with a lag | Cheaper tier followed | Cheaper tier was first | Median lag |
+|---|---|---|---|---|
+| Luxury → semi-luxury | 9 | 3 | **6** | −6 weeks |
+| Semi-luxury → affordable | 12 | 6 | 6 | +2.5 weeks |
+| Semi-luxury → mid-market shoes & bags | 10 | 7 | 3 | +8 weeks |
 
-Of the 7 complete trends, all but `suede` and `shearling_texture` classify as `mass` — trend
-mentions reached a sustained, elevated share of press for all three tiers within the 12-month
-window:
+12 of 14 trends reached a sustained breakout in affordable-brand press within the year; `suede` and
+`shearling_texture` stopped at semi-luxury.
 
-| trend | classification | lag luxury→semi (weeks) | lag semi→affordable (weeks) |
-|---|---|---|---|
-| `purple` | mass | — (no luxury breakout detected) | **+36** |
-| `oxblood` | mass | — (no luxury breakout detected) | **+20** |
-| `olive_moss` | mass | −6 | **+28** |
-| `statement_fur` | mass | −10 | **+8** |
-| `skirt_suit` | mass | **+3** | −10 |
-| `suede` | spreading | — | (no affordable signal yet) |
-| `shearling_texture` | spreading | −13 | (no affordable signal yet) |
+**1. Semi-luxury press usually picked a trend up before luxury press did.** That is the reverse
+of the trickle-down story, and it held from the first 7 trends through all 14. I don't read it as
+"semi-luxury leads". The likelier cause is a limit of the method: luxury coverage is enormous and
+constant (a median of ~2,800 brand articles a week), so a new trend barely moves luxury's share,
+while the same trend is a visible jump in semi-luxury's much smaller coverage. Breakout detection
+compares a tier against its own recent past, so it finds fresh spikes where coverage is thinnest.
 
-Two honest reads of this, not one clean story:
+**2. There is no consistent order between semi-luxury and affordable.** An earlier version of
+this README, written on 7 trends, reported a strong semi→affordable lag (+8 to +36 weeks). With
+all 14 trends it splits exactly 6–6. That claim is withdrawn.
 
-- **The semi→affordable lag is large and positive for four of the five `mass` trends here**
-  (+8 to +36 weeks), with `skirt_suit` running −10 the other way. On this subset it was the
-  strongest signal in the data and pointed where the hypothesis predicts — semi-luxury press
-  attention showing up before affordable press attention. Two caveats, both load-bearing: it was
-  never consistent even here (that −10 has been in this table since the first version, and an
-  earlier draft of this sentence wrongly called the pattern consistent across every `mass`
-  trend), and on the full 13-trend dataset it does not hold at all — 5 negative, 6 positive,
-  −10 to +36. See the note above the table.
-- **The luxury→semi lag is inconsistent, and mostly *not* in the predicted direction** — negative
-  (semi-luxury signal arrived *before* luxury's) for 3 of 5 `mass` trends, and undetected
-  entirely for 2 more. Read at face value this would say semi-luxury sometimes leads, not
-  follows. I don't think that's the real story; more likely explanations, in order of how much I
-  trust them: (1) `purple` and `oxblood` had real luxury runway coverage concentrated right at
-  FW26 (Feb–Mar 2026) that may already have been "priced in" to luxury's baseline by the time the
-  12-month window's trailing-median comparison kicks in, so the algorithm sees no fresh
-  breakout even though the trend is genuinely luxury-led (a real limitation of a rolling
-  same-series baseline, not evidence semi-luxury led); (2) the partial-ingest gaps (Sept 2025 data
-  missing for some tiers) could distort which week reads as "first"; (3) it's possible some of
-  this is real — semi-luxury brands with faster design cycles picking up on pre-show trend
-  reporting (fabric/color forecasting coverage) before the runway shows themselves land in
-  luxury-brand-specific press. Distinguishing these needs the full 45-query dataset and probably
-  a second season to compare against, not more staring at this one.
+**3. Suede didn't skip the cheaper tiers. It went to shoes and bags, and stayed.** The pipeline
+classifies suede as never reaching affordable brands. But in mid-market footwear and accessories
+coverage (Dolce Vita, Tony Bianco, Steve Madden, Sam Edelman, Coach, Kate Spade), suede appears in
+a median **13.3%** of weekly brand coverage, against about **1.6%** in every other tier, and it's
+there almost every week. It never registers as a breakout because there's nothing to break out
+from: breakout detection can't see a trend that's always on. This came from checking the output
+against what's visibly in stores, and it names a real blind spot: **breakout is not presence.**
+The same blind spot likely explains finding 1.
 
-Take the specific week-counts as directional, not precise — see Limitations above, especially the
-GDELT-news-volume-as-proxy and FW26-inflates-luxury-coverage caveats.
+The mid-market tier behaves like a footwear-and-bags segment should: materials and prints rank high
+(suede, sheer, shearling, leopard), while clothing silhouettes barely register (tuxedo dressing and
+the skirt suit are each ~0.2%).
 
-### The semi-luxury → affordable lag, in charts
+![Suede mention share by tier](docs/suede.png)
 
-The three trends with the widest, cleanest semi-luxury → affordable gaps (`charts/` has all 14;
-these three are copied into `docs/` so they render here without needing `data/` regenerated):
-
-![Purple mention share by tier](docs/purple.png)
-`purple`: semi-luxury's Nov 2025 spike (7% share) is the dominant feature at this scale, which
-flattens affordable's own real-but-much-smaller breakout in Aug 2026 into something that looks
-flat by eye — the algorithm catches it (relative to affordable's own quiet baseline) even though
-the chart doesn't make it obvious; the widest gap observed, ~36 weeks.
-
-![Oxblood mention share by tier](docs/oxblood.png)
-`oxblood`: a sharp semi-luxury spike in late 2025 (twice, up to 14% share) with affordable's own
-visible breakout (a clear ~3% spike) not arriving until spring 2026, ~20 weeks later — the
-cleanest visual case of the three.
-
-![Olive/moss green mention share by tier](docs/olive_moss.png)
-`olive_moss`: semi-luxury spikes repeatedly through the FW26 window and peaks in June 2026, then
-affordable has its own clear spike in August 2026, roughly 28 weeks after semi-luxury's first
-sustained signal.
-
-See `data/output/trend_diffusion.csv` for all 14 trends (including the 7 partial ones, which
-mostly land as `spreading`/`emerging`/`no_signal` simply for lack of data) and `charts/*.png` for
-the full weekly curves.
+**How much to trust this:**
+- **One season.** Twelve months of data can't separate a pattern from a one-off.
+- **Mid-market is thin.** A median of 28 brand articles a week (precise search phrases like
+  "Coach handbag" avoid noise but miss coverage). Weeks with fewer than 5 brand articles get no
+  share at all (`MIN_BASELINE_ARTICLES`; its partial first week held one article, a meaningless
+  "100%"). Adding that rule changed no luxury, semi-luxury or affordable result but moved the
+  mid-market lags for 5 trends, which is the measured case for treating them as low-confidence.
+  The suede share difference is large enough to survive it (median 13.3% either way).
+- **Shifted windows.** GDELT's `timespan=12m` counts back from the fetch date, and the cache key
+  doesn't include that date. Mid-market was fetched a month after the other tiers, so it covers
+  late Oct 2025 – late Oct 2026 while the others cover late Sep 2025 – mid Sep 2026.
+- **Press is not product.** A tier "reaching" a trend means its brand press started mentioning it.
 
 ## Next steps
 
@@ -330,5 +343,18 @@ the full weekly curves.
 - **BigQuery + Dataform** — move the mart layer into BigQuery with Dataform-managed
   transformations, for a real warehouse instead of local parquet, and to make this pipeline
   trivially schedulable.
-- **Dashboard** — a small Looker Studio / Streamlit view over `trend_diffusion.csv` and the
-  weekly marts, so the diffusion lag per trend is browsable rather than a static CSV + PNGs.
+- **Pin explicit date windows.** Request `STARTDATETIME`/`ENDDATETIME` instead of `timespan=12m`,
+  and include them in the cache key, so every tier covers the same weeks regardless of fetch date.
+  Drop partial edge weeks at the same time.
+- **Presence, not just breakout.** Report each trend's steady share per tier alongside breakout
+  timing, so always-on trends like suede in footwear are visible in the results, not only in a
+  follow-up check.
+- **A second season.** One season can't separate a real pattern from a one-off; FW25 coverage
+  would give every trend a "normal year" to compare against.
+- **Material-swap terms for the cheaper tiers.** Trickle-down often changes the material, not just
+  the price: luxury suede becomes faux or "vegan" suede at mass price points. Tracking those terms
+  per tier would catch diffusion the current single-term queries miss.
+- **A real retailer's search and sales data.** The synthetic test shows the method works when a
+  delay exists; joining a real retailer's site-search and sell-through data is the actual test.
+- **Consumer search (Google Trends) alongside press.** Press says what editors cover; search says
+  what shoppers want. The gap between them is its own signal.

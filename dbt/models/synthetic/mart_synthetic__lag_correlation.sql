@@ -17,14 +17,14 @@
 with share as (
 
     -- Dense calendar: every baseline week for every trend. A week with no
-    -- mentions is a real 0; a week whose tier baseline was 0 stays NULL
-    -- (undefined) and corr() skips it. Same rule as analyze.py.
+    -- mentions is a real 0; a week whose tier baseline was 0 or too thin
+    -- stays NULL (undefined) and corr() skips it. Same rule as the marts.
     select
         b.tier,
         b.week_start,
         t.trend_id,
         case
-            when b.baseline_mention_count = 0 then null
+            when b.baseline_mention_count < {{ var('min_baseline_articles') }} then null
             else coalesce(m.trend_share, 0)
         end as trend_share
     from {{ ref('fct_weekly_baseline') }} as b

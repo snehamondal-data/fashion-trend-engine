@@ -4,9 +4,9 @@ Plots trend_share (mentions as a % of that tier's own baseline press volume
 that week), not raw counts -- raw counts aren't comparable across tiers.
 Color slots follow the validated dataviz palette's first three categorical
 hues in fixed order (never cycled/reassigned): luxury=blue, semi_luxury=
-orange, affordable=aqua. Those three slots are the ones documented to clear
-CVD/contrast checks against each other; aqua sits below 3:1 contrast on a
-light surface on its own, so every line also gets a direct end-of-line label
+orange, affordable=aqua, and mid_market (added later) takes the next slot,
+yellow -- existing tiers keep their colors. Slots 1-4 are the palette's
+validated order; aqua and yellow sit below 3:1 contrast on a light surface, so every line also gets a direct end-of-line label
 (not just a legend) per the palette's relief rule.
 """
 import logging
@@ -24,8 +24,13 @@ from src.config_models import TrendsConfig
 
 log = logging.getLogger("charts")
 
-TIER_COLORS = {"luxury": "#2a78d6", "semi_luxury": "#eb6834", "affordable": "#1baf7a"}
-TIER_LABELS = {"luxury": "Luxury", "semi_luxury": "Semi-luxury", "affordable": "Affordable"}
+TIER_COLORS = {"luxury": "#2a78d6", "semi_luxury": "#eb6834", "affordable": "#1baf7a", "mid_market": "#eda100"}
+TIER_LABELS = {
+    "luxury": "Luxury",
+    "semi_luxury": "Semi-luxury",
+    "mid_market": "Mid-market footwear & accessories",
+    "affordable": "Affordable",
+}
 
 SURFACE = "#fcfcfb"
 GRID = "#e1e0d9"

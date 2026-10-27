@@ -26,4 +26,5 @@ models:
       - name: trend_share
         description: >
           mention_count / baseline_mention_count. NULL when the tier's
-          baseline that week was zero or missing (undefined, not zero).
+          baseline that week was missing or below min_baseline_articles
+          (undefined, not zero).

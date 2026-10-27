@@ -52,7 +52,16 @@ MAX_CONSECUTIVE_TASK_FAILURES = 3
 # Sentinel trend_id used for the brands-only baseline query per tier.
 BASELINE_TREND_ID = "_baseline"
 
-TIERS = ("luxury", "semi_luxury", "affordable")
+# mid_market (footwear & accessories) was added after the original three. It is
+# partly a category, not just a price rung, so analyze.py measures it fully but
+# keeps it out of the luxury -> semi -> affordable classification.
+TIERS = ("luxury", "semi_luxury", "mid_market", "affordable")
+
+# A week whose tier baseline has fewer articles than this gets an undefined
+# (NaN) trend_share, same as a zero-baseline week. Found on mid_market, whose
+# partial first week held 1 article -- 1 of 1 mentioned suede, a "100%" share
+# that is noise, not signal. Mirrored by dbt var min_baseline_articles.
+MIN_BASELINE_ARTICLES = 5
 
 # --- Sustained-signal detection (analyze.py) ---
 # A week is "elevated" if its 3-week rolling mean share exceeds the trailing

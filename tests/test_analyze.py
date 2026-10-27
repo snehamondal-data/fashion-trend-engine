@@ -119,6 +119,27 @@ def test_analyze_trend_no_semi_luxury_signal():
     assert result["classification"] == "mass"
 
 
+def test_mid_market_gets_lags_but_never_changes_classification():
+    lux_m, lux_b = _tier_frames("luxury", breakout_week=10)
+    semi_m, semi_b = _tier_frames("semi_luxury", breakout_week=13)
+    mid_m, mid_b = _tier_frames("mid_market", breakout_week=15)
+    # affordable flat: without mid_market this trend is 'spreading'.
+    aff_m, aff_b = _tier_frames("affordable", breakout_week=999, elevated_share=0.01)
+
+    weekly_mentions_df = pd.concat([lux_m, semi_m, mid_m, aff_m], ignore_index=True)
+    weekly_baseline_df = pd.concat([lux_b, semi_b, mid_b, aff_b], ignore_index=True)
+
+    result = analyze.analyze_trend("suede", weekly_mentions_df, weekly_baseline_df)
+
+    idx = pd.date_range("2026-01-05", periods=30, freq="7D")
+    assert result["mid_market_first_signal_week"] == idx[15]
+    assert result["lag_luxury_to_mid_market_weeks"] == 5
+    assert result["lag_semi_to_mid_market_weeks"] == 2
+    # mid_market is a footwear/accessories segment, not a price rung: its
+    # breakout must not promote the trend to 'mass'.
+    assert result["classification"] == "spreading"
+
+
 def test_analyze_trend_no_signal_anywhere_classifies_no_signal():
     lux_m, lux_b = _tier_frames("luxury", breakout_week=999, elevated_share=0.01)
     semi_m, semi_b = _tier_frames("semi_luxury", breakout_week=999, elevated_share=0.01)

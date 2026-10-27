@@ -27,6 +27,7 @@ def con():
         "CREATE VIEW weekly_mentions AS SELECT * FROM (VALUES "
         "('oxblood','luxury',DATE '2026-01-05',10.0,100.0,0.10), "
         "('oxblood','semi_luxury',DATE '2026-01-05',5.0,50.0,0.10), "
+        "('oxblood','mid_market',DATE '2026-01-05',3.0,60.0,0.05), "
         "('oxblood','affordable',DATE '2026-01-05',2.0,40.0,0.05), "
         "('velvet','semi_luxury',DATE '2026-01-05',1.0,50.0,0.02) "
         ") AS t(trend_id, tier, week_start, mention_count, baseline_mention_count, trend_share)"
@@ -111,7 +112,7 @@ def test_run_query_returns_columns_and_rows(con, tmp_path, monkeypatch):
     out = run_query(con, "SELECT trend_id, tier FROM weekly_mentions ORDER BY trend_id, tier")
     assert out["error"] is None
     assert out["columns"] == ["trend_id", "tier"]
-    assert out["row_count"] == 4
+    assert out["row_count"] == 5
     assert out["truncated"] is False
 
 
@@ -155,7 +156,7 @@ def test_every_query_is_logged(con, tmp_path, monkeypatch):
 def test_coverage_separates_complete_from_partial(con):
     cov = coverage(con)
     assert "oxblood" in cov["complete"]
-    assert cov["partial"]["velvet"] == ["affordable", "luxury"]
+    assert cov["partial"]["velvet"] == ["affordable", "luxury", "mid_market"]
     # Trends in the config with no rows at all are 'absent', not 'partial'.
     assert "suede" in cov["absent"]
 

@@ -19,7 +19,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: [luxury, semi_luxury, affordable]
+                values: [luxury, semi_luxury, mid_market, affordable]
       - name: date
         data_tests: [not_null]
       - name: value

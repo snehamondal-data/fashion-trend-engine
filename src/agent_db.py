@@ -23,6 +23,7 @@ import duckdb
 
 from src.config import (
     OUTPUT_DIR,
+    TIERS,
     TREND_DIFFUSION_CSV,
     WEEKLY_BASELINE_PATH,
     WEEKLY_MENTIONS_PATH,
@@ -64,7 +65,8 @@ VIEW_SOURCES = {
 SCHEMA_DOC = """\
 weekly_mentions  -- one row per (trend, tier, week)
   trend_id                 TEXT     e.g. 'oxblood'
-  tier                     TEXT     'luxury' | 'semi_luxury' | 'affordable'
+  tier                     TEXT     'luxury' | 'semi_luxury' | 'mid_market' | 'affordable'
+                                    (mid_market = footwear & accessories brands, not a price rung)
   week_start               DATE     Monday of the week
   mention_count            DOUBLE   raw article count for the trend in that tier
   baseline_mention_count   DOUBLE   that tier's total brand-press articles that week
@@ -84,9 +86,14 @@ trend_diffusion  -- one row per trend: the computed diffusion result
   semi_luxury_peak_week           DATE
   affordable_first_signal_week    DATE
   affordable_peak_week            DATE
+  mid_market_first_signal_week    DATE
+  mid_market_peak_week            DATE
   lag_luxury_to_semi_weeks        BIGINT   weeks from luxury's first signal to semi-luxury's
   lag_semi_to_affordable_weeks    BIGINT   weeks from semi-luxury's first signal to affordable's
+  lag_luxury_to_mid_market_weeks  BIGINT   weeks from luxury's first signal to mid-market's
+  lag_semi_to_mid_market_weeks    BIGINT   weeks from semi-luxury's first signal to mid-market's
   classification                  TEXT     'mass' | 'spreading' | 'emerging' | 'no_signal'
+                                           (from luxury/semi/affordable only; mid_market excluded)
 
 Always compare tiers using trend_share, never mention_count: luxury brands get
 structurally more press than affordable brands regardless of any trend, so raw
@@ -262,7 +269,7 @@ def coverage(con: Optional[duckdb.DuckDBPyConnection] = None) -> Dict[str, Any]:
     for trend_id, tier in present:
         by_trend.setdefault(trend_id, []).append(tier)
 
-    all_tiers = {"luxury", "semi_luxury", "affordable"}
+    all_tiers = set(TIERS)
     trends = TrendsConfig.from_yaml().trends
     labels = {t.id: t.label for t in trends}
 
