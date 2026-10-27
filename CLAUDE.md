@@ -32,7 +32,7 @@ config/*.yaml → ingest_gdelt → data/raw/*.json → transform → data/stagin
 | `src/query_builder.py` | Pure GDELT query-string construction. No network, no I/O. |
 | `src/gdelt_models.py` | Response schemas + the two error types. |
 | `src/gdelt_client.py` | **Only** module that makes network calls. Rate limit, retry, cache. |
-| `src/ingest_gdelt.py` | Orchestrates 45 tasks: 3 tier baselines + 14 trends × 3 tiers. |
+| `src/ingest_gdelt.py` | Orchestrates 60 tasks: 4 tier baselines + 14 trends × 4 tiers. |
 | `src/transform.py` | raw → staging → weekly marts. Full recompute, atomic writes. Kept as the parity reference. |
 | `dbt/` | dbt-duckdb port of transform (`make transform-dbt`) + the `synthetic` schema. |
 | `src/export_marts.py` | DuckDB warehouse → the same parquet marts, atomically. |
@@ -111,7 +111,7 @@ targets work without activating.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-make ingest      # 45 GDELT queries, sequential, ~5s/request floor. Resumable.
+make ingest      # 60 GDELT queries, sequential, ~5s/request floor. Resumable.
 make transform   # raw -> staging -> weekly marts
 make analyze     # marts -> data/output/trend_diffusion.csv
 make charts      # marts -> charts/*.png
@@ -129,19 +129,20 @@ full rate-limited sweep.
 
 ## Current state
 
-- **All 45 queries cached** (the last, `le_smoking`/`affordable`, landed 2026-10-26). All 14 trends
-  have all three tiers: 12 classify `mass`, 2 (`suede`, `shearling_texture`) `spreading`.
-- `transform` / `analyze` / `charts` all run clean. **69 tests pass** (run under `arch -x86_64`: the venv is Intel).
+- **All 60 queries cached** (mid_market landed 2026-10-27). 4 tiers; `mid_market` = footwear &
+  accessories, measured but excluded from classification. 12 trends `mass`, 2 (`suede`,
+  `shearling_texture`) `spreading`.
+- Everything runs clean; `make dashboard` writes `docs/index.html` (GitHub Pages). **74 tests pass**
+  (run under `arch -x86_64`: the venv is Intel).
 - dbt port matches `transform.py` exactly (values + dtypes); `trend_diffusion.csv` byte-identical.
 - Synthetic layer: the 6-week planted lag is recovered for 14/14 trends on searches at the semi-luxury
   tier (median r 0.96), against a 0.53 chance ceiling from the core-product negative control. Other
   tiers mostly don't clear it. Sales recover it less cleanly (stockouts cap them) — by design.
 - The orphaned luxury-baseline cache file has been deleted and the marts/charts rebuilt; luxury
   `trend_share` is now correct (it was exactly half). Lag table was unaffected either way.
-- ⚠️ **The README's Findings table is stale.** It was written against the earlier 7-trend subset.
-  On the full dataset its semi→affordable claim does not hold: across the 12 trends with that lag,
-  6 are negative and 6 positive. The luxury→semi negative result holds (6 of 9 negative). A banner in the README says so; the prose was deliberately left as written
-  rather than quietly restated. Regenerating that section is an open decision.
+- README Findings regenerated 2026-10-27 on all 60 queries. The old semi→affordable claim is
+  explicitly withdrawn (6–6 split). Headline: suede sits at a median 13.3% of mid-market coverage vs
+  ~1.6% elsewhere but never "breaks out" — breakout detection can't see always-on trends.
 
 ## Conventions
 
@@ -165,24 +166,25 @@ full rate-limited sweep.
 - **GDELT throttling** is the main operational constraint. Effective limits are stricter than the
   stated one-request-per-5s, individual requests sometimes need minutes of retrying, and heavy
   testing once triggered what looked like an extended soft-block on one IP (a different network
-  cleared it immediately). This is why 11 queries are still missing.
+  cleared it immediately). Throttled tasks just need `make ingest` rerun later.
+- **Shifted windows.** `timespan=12m` is relative to fetch time and the cache key omits it, so
+  mid_market (fetched a month later) covers Oct 2025–Oct 2026 vs Sep 2025–Sep 2026 for the rest,
+  and refetching reuses stale files. Fix: explicit STARTDATETIME/ENDDATETIME in query + cache key.
+- **Mid-market is thin**: median 28 baseline articles/week (vs 192 semi, 882 affordable, 2,800
+  luxury). Its lags are low-confidence. Weeks with < MIN_BASELINE_ARTICLES (5) brand articles get
+  a NaN share (its partial first week had 1 article = a bogus 100%); that rule moved mid_market lags
+  for 5 trends and changed nothing in the other three tiers.
 - **Luxury→semi lag inversion.** For 3 of 5 `mass` trends the semi-luxury signal fires *before*
   luxury's, and for 2 more luxury never fires. Read literally that contradicts the hypothesis. The
   likeliest explanation is a real limitation of a rolling same-series baseline: FW26 luxury
   coverage is already "priced in" to luxury's own trailing median, so no fresh breakout registers
   even when the trend is genuinely luxury-led. Partial-ingest gaps are a second candidate.
-  Distinguishing these needs the full 45-query dataset and a second season. The semi→affordable
-  lag (+8 to +36 weeks) is consistent and in the predicted direction — that's the solid finding.
-- **Orphaned cache file double-counts the luxury baseline.** `data/raw/` contains two
-  `_baseline__luxury__*.json` files, from before `query_builder` started quoting `Hermès`. Both
-  are globbed by `transform.py`, so the luxury weekly baseline is **exactly 2× too high** and
-  every luxury `trend_share` is **exactly half** its true value. Verified impact: charts only —
-  luxury lines plot at half height, so cross-tier level comparison is misleading. Classifications
-  and lags are unaffected, because the signal test is a ratio and scale-invariant in the
-  denominator (re-running analyze without the orphan changes 0 of 14 rows). Fix by deleting
-  `data/raw/_baseline__luxury__e6884784e3bb85da.json` (the older, unquoted-`Hermès` one) and
-  rerunning `make transform charts`. **General hazard:** any future edit to `brands.yaml` or the
-  query builder orphans cache files the same way.
+  Distinguishing these needs a second season. (The semi→affordable lag once looked solid on 7
+  trends; on all 14 it splits 6–6 and the claim is withdrawn.)
+- **Orphaned cache files** (fixed once, now guarded). Any edit to `brands.yaml` or the query
+  builder leaves the old raw file beside the new one; the pandas transform would sum both (it once
+  halved every luxury `trend_share`). The dbt build now fails on it
+  (`assert_one_raw_file_per_trend_tier`): move the stale file out of `data/raw/` and rebuild.
 - **Press attention ≠ product adoption.** A trend "reaching" affordable means affordable-brand
   press started mentioning it, not that anything shipped. The Shopify `/products.json` step in
   Next Steps is the real fix.
