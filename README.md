@@ -1,15 +1,96 @@
 # Trickle-Down Trend Tracker
 
-A fashion trend diffusion engine. **Hypothesis:** luxury houses set trends on the runway
-(Fall/Winter 2026 shows, Feb–Mar 2026); semi-luxury brands adapt them next; affordable brands
-mass-produce them last. This project measures that lag using public news coverage as a proxy
-for trend momentum — not sales data, not social media, just how much the press is talking about
-a given trend in the context of a given brand tier, and how many weeks it takes for that
-attention to move from one tier to the next.
+**Can news coverage tell a fashion brand what to stock, and when?**
 
 **[Open the interactive dashboard →](https://snehamondal-data.github.io/fashion-trend-engine/)**
-Press momentum per trend and tier, the lag table, and the synthetic-retailer demand test, on one
-page. Built from the marts by `make dashboard`.
+
+**The problem.** A clothing brand decides what to make, and how much, months before anyone buys it.
+Guess wrong and it's left with racks of unsold stock, or sold-out bestsellers it can't restock in
+time.
+
+**The question.** Fashion's old rule is "trickle-down": a trend appears on luxury runways (the
+Fall/Winter 2026 shows, Feb–Mar 2026), semi-luxury brands adapt it, then high-street brands
+mass-produce it. If that order is reliable and the timing predictable, a brand can see demand
+coming. Is it? And can press buzz work as an early warning?
+
+**How it's measured.** Weekly news coverage of 14 FW26 trends across four brand tiers, from GDELT
+article *counts* (no article text). Each trend is measured as a share of that tier's own coverage,
+because luxury brands get far more press regardless of trend. The **lag** is the number of weeks
+between one tier's press first breaking out on a trend and the next tier's.
+
+**The answer so far.**
+- **Not a neat ladder.** Semi-luxury press broke out *before* luxury for 6 of 9 trends, and
+  high-street brands led as often as they followed (6–6). Details in [Findings](#findings).
+- **The clearest signal isn't a trickle at all.** Suede sits in a typical 13% of mid-market shoe and
+  bag coverage every week, against about 2% elsewhere. It never "breaks out", so a breakout detector
+  misses it.
+- **The method holds up when the answer is known.** On a simulated store, Sage & Blush, whose
+  shoppers were built to want a trend exactly 6 weeks after semi-luxury press covers it, the
+  analysis found the hidden 6 weeks for all 14 products without being told. It also passes
+  harder versions of that test (below).
+- **It's built to look forward.** A watchlist of 8 sourced spring/summer 2027 runway trends fills
+  in as the post-show press data arrives. An "in season now" view flags which fall trends' press
+  is rising and when demand would follow. Both show **"Incomplete data"** rather than a number
+  wherever GDELT's own coverage has gaps. Right now that's every reading: whole days in
+  mid-September and early October 2026 are missing from GDELT.
+
+## How a brand would use this
+
+Three steps, each built here. Step 1 runs on real press. Step 2 runs on the simulated store,
+because no real retailer's data is available. Step 3 uses real press with a delay measured on the
+simulated store. `src/planning.py`, `make planning`.
+
+**1. Early warning, about six months ahead.** Right after the runway shows, check which trends'
+press is gaining. *Momentum* compares a trend's share of a tier's coverage in the show weeks plus
+two against the eight weeks before. At 1.5× or more it's **rising**, at ⅔ or less **fading**,
+otherwise **flat**, with fewer than 10 mentions **too little press** to say. This is press
+momentum, not a sales forecast. The **SS27 watchlist** runs it on 8 spring/summer 2027 trends in
+`config/trends.yaml` (`season: SS27`): satin, statement belts, yellow, green, metallics, double
+denim, skirts and bra tops. Each was taken from runway reporting that names the houses that
+showed it, with the source linked. Candidates without named houses in a readable source were left
+out rather than guessed. The shows came after the main 12-month fetch ended, so the watchlist has
+its own pinned-date fetch (`make ingest-watchlist`) → `data/output/planning/watchlist_SS27.csv`
+and the dashboard. The main pipeline still loads only the FW26 trends. If any week in either window has less
+than half the tier's typical coverage, the reading is **incomplete data**, not a momentum figure.
+GDELT lost whole days in Sep–Oct 2026: semi-luxury brand coverage fell from ~220 articles a week
+to 0–11 in some weeks. Without this rule, a trend with 0 mentions in a gap week read as "fading
+×0.0".
+
+**2. Buy plan.** Start from last season's sales per product. Tilt the buy by the trend signal:
+multiplier = √momentum, capped at **+50% / −25%**. Flat or thin press leaves the buy where history
+puts it. The square root and the caps are deliberate: one season's press shouldn't be able to
+double an order.
+
+**3. Launch timing, weeks ahead: "in season now".** Shoppers follow press with a delay, and the
+delay comes from what the lag analysis *measured* for each product, never a fixed number. The
+in-season view compares the last four weeks of real semi-luxury press against the eight before.
+For each fall trend that's rising, it shows when demand would land: the same weeks, shifted by
+that product's delay. Marketing starts two weeks before; stock lands one week before. The delay
+was measured on the simulated store, and it's labelled that way. A real store would use the delay
+from its own searches. Products whose delay didn't beat chance get no dates. A press-to-demand
+delay is weeks, not months, so this step is for timing campaigns and allocating stock already
+bought. The six-month buy is step 2's job. → `data/output/planning/in_season_now.csv`.
+
+**Does the signal actually help? Backtest on a simulated season** (Sage & Blush, FW26). Decide on
+20 Apr 2026 using only press seen by then, sell for 22 weeks against the store's true demand, and
+compare one up-front buy with and without the trend signal:
+
+| | Without signal | With signal |
+|---|---|---|
+| Buys changed | — | 4 of 14 |
+| Units off true demand | 1,957 | **1,688** (−14%) |
+| Units left over | 1,630 | **1,361** (−17%) |
+| Product-weeks sold out | 13 | 13 |
+
+Read honestly:
+- The gain is real but narrow. It all came from cutting buys on fading trends (oxblood, plaid,
+  brooches).
+- The one rising trend (purple) was over-bought: 793 units against a true demand of 578.
+- The signal didn't prevent a single sold-out week. The worst miss was skirt suits (8 weeks sold
+  out), where press was too thin for the signal to act on.
+- The simulated store's demand is built from press, so this checks that the plumbing works and
+  that the signal's direction is sensible. It is not evidence that press predicts a real store's
+  demand. That takes the store's own data.
 
 ## Architecture
 
@@ -40,13 +121,19 @@ flowchart TB
         CSV[("trend_diffusion.csv")]
         CH["charts.py: one PNG per trend"]
         AG["NL query agent<br/>Claude + SELECT-only guardrail"]
-        DASH["Streamlit dashboard"]
+        DASH["static dashboard<br/>docs/index.html, GitHub Pages"]
     end
 
     subgraph SYN["Synthetic retailer layer (synthetic_ prefix, never mixed with real)"]
         GEN["generator seeded from trend_share<br/>with a planted lag"]
         SD[("synthetic catalog, sales,<br/>on-hand by size, site searches")]
         OV["demand overlay mart<br/>+ lag-recovery test"]
+        PL["planning.py: buy plan,<br/>launch timing, backtest"]
+    end
+
+    subgraph WL["Forward watchlist"]
+        RW[("data/raw_watchlist<br/>SS27 pinned window")]
+        MO["momentum: rising / flat / fading"]
     end
 
     CFG --> I
@@ -63,18 +150,20 @@ flowchart TB
     WM --> AG
     CSV --> AG
     WM -.-> GEN
-    GEN -.-> SD
-    SD -.-> OV
+    GEN --> SD
+    SD --> OV
     WM -.-> OV
-    OV -.-> DASH
-    WM -.-> DASH
-
-    classDef planned stroke-dasharray: 5 5
-    class GEN,SD,OV,DASH planned
+    OV --> PL
+    I --> RW
+    RW --> MO
+    MO --> PL
+    PL --> DASH
+    OV --> DASH
+    WM --> DASH
+    CSV --> DASH
 ```
 
-Dashed boxes and arrows are **planned** (a synthetic semi-luxury retailer's demand data, in progress). Everything
-solid runs today.
+Everything in the diagram runs today. Dashed arrows mark where real press feeds the simulated store.
 
 Medallion layers, kept structurally separate:
 - **Bronze** (`data/raw/`) — exactly what GDELT returned, wrapped with fetch provenance. Append-only;
@@ -83,8 +172,9 @@ Medallion layers, kept structurally separate:
   `(trend_id | tier, date)`. The raw JSON schema is declared, not inferred.
 - **Gold** (dbt mart tables → `data/marts/`) — weekly aggregates joined into `trend_share` (see
   below); `analyze.py` builds lags and classifications on top.
-- **Synthetic** (planned) — a fictional semi-luxury retailer's mock sales data lives under its own `synthetic_` prefix so it
-  can never be joined to real data by accident.
+- **Synthetic** — the fictional retailer's simulated sales, stock and searches live in their own
+  `synthetic` dbt schema and `data/synthetic/`, so they can never be joined to real data by accident.
+  Planning outputs built from them are prefixed `simulated_`.
 
 The transform runs in dbt (`make transform-dbt`); `tests/test_dbt_parity.py` asserts it produces
 output identical to the original Python `transform.py`, which is kept for now. Both fully
@@ -191,7 +281,9 @@ make ingest         # fetch + cache all 60 GDELT queries (sequential, ~5s/reques
 make transform-dbt  # raw -> staging -> weekly marts in dbt, data tests, parquet export
 make analyze        # weekly marts -> data/output/trend_diffusion.csv
 make charts         # weekly marts -> charts/*.png (one line per tier)
-make synthetic      # Sage & Blush synthetic retail data + lag-recovery marts (dbt `synthetic` schema)
+make synthetic      # Sage & Blush simulated retail data + lag-recovery marts (dbt `synthetic` schema)
+make ingest-watchlist  # FW26 + SS27 trends, pinned to the SS27 show window -> data/raw_watchlist/
+make planning       # momentum, buy plan, launch timing, backtest -> data/output/planning/
 make dashboard      # everything above -> docs/index.html (the GitHub Pages dashboard)
 make transform      # the original pandas transform; kept as the dbt parity reference
 make all            # ingest, transform, analyze, charts
@@ -245,11 +337,12 @@ ground-truth SQL at run time rather than pasted in as literals, since incrementa
 hard-coded numbers into false failures. `make eval-dry` prints the cases and their ground truth
 without spending any tokens.
 
-## Synthetic retailer test (Sage & Blush)
+## Simulated retailer test (Sage & Blush)
 
 The business question behind this project is whether a retailer could use press momentum as an
 early demand signal. Real sales data isn't available, so the method is tested on a **fictional**
-semi-luxury retailer, Sage & Blush, whose answer is known in advance.
+semi-luxury retailer, Sage & Blush, whose answer is known in advance: like burying a coin in your
+own garden to check that a metal detector works.
 
 - **Generated from real data, with a planted delay.** Each of 14 products is tied to one trend
   (a suede wrap skirt, an oxblood slip skirt...). Its weekly demand follows that trend's real
@@ -257,25 +350,43 @@ semi-luxury retailer, Sage & Blush, whose answer is known in advance.
   (`config/synthetic_retailer.yaml`, `src/synthetic_retailer.py`).
 - **Realistic in the way that matters.** Sales are capped by stock on hand, so a trend spike sells
   out core sizes and sales then *understate* demand. Site searches aren't capped.
-- **A negative control.** Four core products (a bodysuit, a poplin shirt...) ignore trends
-  entirely. Testing them against every trend, tier and delay shows how strong a correlation
-  chance alone produces.
+- **Like-for-like decoys.** Every product is also correlated against the 13 *other* trends'
+  press, which has the same spiky shape but nothing to do with that product. Four core products
+  (a bodysuit, a poplin shirt...) ignore trends entirely and are tested against all 14. The
+  product's own trend has to beat the best correlation any decoy reached. That is the **chance
+  line**.
 - **The analysis isn't told the delay.** `mart_synthetic__lag_correlation` correlates press in
   week *t* with demand in week *t + k* for k = 0–12, for every tier;
   `mart_synthetic__recovered_lag` picks the best k.
 
 **Result:** the 6-week delay is recovered for all 14 trends from searches, at the semi-luxury tier
-(median r 0.96), well above the 0.53 that the core products reached by chance across 2,184 tries.
-The other tiers mostly don't clear that ceiling, so the method also finds *which* tier drives
-demand. Using sales instead of searches, some trends point to the wrong delay: stockouts cap
-sales exactly when demand peaks, which is why search data is the better early signal.
+(median r 0.96), and each one clears its own chance line (0.53–0.84). Using sales instead of
+searches, plaid points to the wrong delay: stockouts cap sales exactly when demand peaks, which is
+why search data is the better early signal.
 
-What this does and doesn't show: it proves the method *can* find a delay when one exists. The
-synthetic world is cleaner than a real one (correlations near 1), so it says nothing about how
-any real retailer's demand behaves. That needs real data. All synthetic data is labelled as such,
-lives in its own `synthetic` dbt schema, and is generated deterministically (seeded, with input
-hashes in a manifest). `tests/test_synthetic_retailer.py` plants a 4-week delay end to end, so
-nothing passes by having the answer hard-coded.
+**Harder versions of the test** (`tests/test_synthetic_retailer.py`, all end to end through dbt):
+
+| Test | What it requires | Result |
+|---|---|---|
+| Different delay per product (2, 5, 9 weeks) | each one found exactly | 3 of 3 |
+| Tiny noisy store (~2 sales/week) | mostly "can't tell"; whatever it's confident about is right | confident on 5 of 14, all correct |
+| No relationship at all (demand follows hidden, unrelated press) | claims a delay for ≤ 5% of products | 2 of 42 (4.8%) |
+
+The null test caught a real flaw. The first version of the chance line came only from the core
+products, whose demand is flat. But two unrelated *spiky* series (trend press and trend-driven
+demand) correlate by chance far more often. Against that core-only line, the method found
+relationships that didn't exist (r = 0.62 against a line of 0.47). The decoy-trend line fixes the
+comparison. The expected false-positive rate is now about 13 tries against ~690, roughly 2% per
+product, and measured over all null runs it was 4 of 126 (3%). Under heavier noise (~1 sale a
+week) it was occasionally confidently wrong, at about that same rate. **When the method says
+"found it", that's roughly a 1-in-30 chance of being a fluke, not a guarantee.**
+
+What this does and doesn't show: it proves the method *can* find a delay when one exists, and
+mostly says so when it can't. The simulated world is cleaner than a real one (correlations near
+1), so it says nothing about how any real retailer's demand behaves. That needs real data. All
+simulated data is labelled as such, lives in its own `synthetic` dbt schema, and is generated
+deterministically (seeded, with input hashes in a manifest). The tests plant delays other than 6,
+so nothing passes by having the answer hard-coded.
 
 ## Findings
 
@@ -343,9 +454,11 @@ the skirt suit are each ~0.2%).
 - **BigQuery + Dataform** — move the mart layer into BigQuery with Dataform-managed
   transformations, for a real warehouse instead of local parquet, and to make this pipeline
   trivially schedulable.
-- **Pin explicit date windows.** Request `STARTDATETIME`/`ENDDATETIME` instead of `timespan=12m`,
-  and include them in the cache key, so every tier covers the same weeks regardless of fetch date.
-  Drop partial edge weeks at the same time.
+- **Pin explicit date windows for the main dataset too.** The client now supports a pinned
+  `STARTDATETIME`/`ENDDATETIME` window in the cache key (the SS27 watchlist uses it). Moving the
+  main 12-month fetch onto one would make every tier cover the same weeks regardless of fetch date.
+- **A fuller SS27 list.** The 8 spring trends are the ones a readable source tied to named houses.
+  The LLM extraction step below would make each new season's list faster and broader.
 - **Presence, not just breakout.** Report each trend's steady share per tier alongside breakout
   timing, so always-on trends like suede in footwear are visible in the results, not only in a
   follow-up check.

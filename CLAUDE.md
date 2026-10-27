@@ -42,6 +42,9 @@ config/*.yaml → ingest_gdelt → data/raw/*.json → transform → data/stagin
 | `src/agent_db.py` | DuckDB views over the marts, parsed SELECT-only guardrail, coverage, query log. |
 | `src/agent.py` | NL query agent (Claude tool-calling loop). Reads marts only — never GDELT. |
 | `src/agent_eval.py` | Eval suite: fixed questions, ground truth computed from the marts. |
+| `src/synthetic_retailer.py` | SIMULATED Sage & Blush data from real share + planted lag(s). |
+| `src/planning.py` | Momentum (rising/flat/fading), buy plan, launch timing, backtest, SS27 watchlist. |
+| `src/dashboard.py` | marts + planning outputs → `docs/index.html` (GitHub Pages). |
 
 Three layers stay structurally separate:
 - **raw** (`data/raw/`) — exactly what GDELT returned, wrapped with fetch provenance. A cache
@@ -132,17 +135,39 @@ full rate-limited sweep.
 - **All 60 queries cached** (mid_market landed 2026-10-27). 4 tiers; `mid_market` = footwear &
   accessories, measured but excluded from classification. 12 trends `mass`, 2 (`suede`,
   `shearling_texture`) `spreading`.
-- Everything runs clean; `make dashboard` writes `docs/index.html` (GitHub Pages). **74 tests pass**
+- Everything runs clean; `make dashboard` writes `docs/index.html` (GitHub Pages). **115 tests pass**
   (run under `arch -x86_64`: the venv is Intel).
 - dbt port matches `transform.py` exactly (values + dtypes); `trend_diffusion.csv` byte-identical.
 - Synthetic layer: the 6-week planted lag is recovered for 14/14 trends on searches at the semi-luxury
-  tier (median r 0.96), against a 0.53 chance ceiling from the core-product negative control. Other
-  tiers mostly don't clear it. Sales recover it less cleanly (stockouts cap them) — by design.
+  tier (median r 0.96), each clearing its own per-product decoy ceiling (0.53–0.84). Sales recover
+  it less cleanly (stockouts cap them) — by design. Validation: mixed delays 3/3, noisy store confident
+  on 5/14 (all right), null 2/42 false positives.
 - The orphaned luxury-baseline cache file has been deleted and the marts/charts rebuilt; luxury
   `trend_share` is now correct (it was exactly half). Lag table was unaffected either way.
 - README Findings regenerated 2026-10-27 on all 60 queries. The old semi→affordable claim is
   explicitly withdrawn (6–6 split). Headline: suede sits at a median 13.3% of mid-market coverage vs
   ~1.6% elsewhere but never "breaks out" — breakout detection can't see always-on trends.
+
+## Planning layer (added 2026-10-27)
+
+- **Seasons in trends.yaml**: `season: FW26` (default) or `SS27`. `TrendsConfig.from_yaml()` returns FW26
+  only, so the main pipeline/Sage & Blush/agent never see SS27. The 8 SS27 trends are sourced (named
+  houses + URL); don't add unsourced ones. `season=None` loads all (watchlist ingest only).
+- **In season now** (`planning.in_season`): FW26 trends, last 4 vs prior 8 weeks of the watchlist window,
+  demand window = recent weeks + measured (simulated) delay. Unfetched (trend, tier) pairs are `no_data`.
+- **GDELT gap weeks (Sep–Oct 2026)**: whole days missing (semi-luxury baseline 0–11 articles in weeks of
+  Sep 14 and Oct 5 vs ~220 normal; mid_market in the main data too). Any week under
+  `COMPLETE_WEEK_FRACTION` (0.5) of the tier's median in either window → `incomplete_data`, multiplier
+  1.0. As of 2026-10-27 every SS27 and in-season reading is incomplete; they'd need a later window.
+- **Watchlist fetch** is separate: `make ingest-watchlist` → `data/raw_watchlist/` (92 queries), pinned window
+  `WATCHLIST_TIMESPAN` (a `YYYYMMDDHHMMSS-YYYYMMDDHHMMSS` timespan → GDELT start/enddatetime, part
+  of the cache key). Never put these files in `data/raw/`: transform/dbt glob it and would sum them.
+- **Noise ceiling is per product**: own trend must beat the 13 decoy trends' press (all tiers/lags)
+  and the core skus. The old core-only ceiling was too low for spiky demand; the null test caught it.
+  Measured false-positive rate ~3% per product. Don't go back to a core-only ceiling.
+- `demand_truth.parquet` is simulation ground truth, read only by the planning backtest, never dbt.
+- Backtest numbers (−14% buy error, no change in sold-out weeks) are findings, not asserted in tests.
+- Planning must only use information available at the decision week (`breakout_week` takes `until`).
 
 ## Conventions
 

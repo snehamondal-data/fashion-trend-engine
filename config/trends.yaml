@@ -104,3 +104,83 @@ trends:
     evidence:
       brands: [Prada, Tom Ford, The Row, Victoria Beckham]
       source: https://www.whowhatwear.com/fashion/runway/fashion-week-trends-fall-winter-2026
+
+  # --- Spring/Summer 2027 (shows Sep-Oct 2026) ---
+  # For the forward watchlist only (season: SS27); the main FW26 pipeline
+  # never loads these. Each one is reported by the cited source with the
+  # houses named there. Candidates without named houses in a source we could
+  # read (vinyl/PVC, soft pink, longer hems) were left out, not guessed.
+
+  - id: ss27_satin
+    label: Liquid satin
+    season: SS27
+    query_terms: ["satin"]
+    context: ["dress", "skirt", "top", "fashion"]
+    evidence:
+      brands: [Louis Vuitton, Givenchy, Ann Demeulemeester, Zimmermann, Sacai]
+      note: '"Satin saturation" at Paris; satin in ~20% of SS27 womenswear looks'
+      source: https://www.stylearcade.com/blog/top-trends-from-paris-fashion-week-spring-summer-2027
+
+  - id: ss27_belts
+    label: Statement belts
+    season: SS27
+    query_terms: ["belted", "statement belt"]
+    context: ["dress", "coat", "jacket", "fashion"]
+    evidence:
+      brands: [Celine, Isabel Marant, Dries Van Noten]
+      note: '"Belts, belts, belts" at Paris; Ferragamo in Milan (imfirenzedigest.com, 2026-10-09)'
+      source: https://www.stylearcade.com/blog/top-trends-from-paris-fashion-week-spring-summer-2027
+
+  - id: ss27_yellow
+    label: Yellow
+    season: SS27
+    query_terms: ["yellow", "lemon yellow", "butter yellow"]
+    context: ["dress", "skirt", "fashion"]
+    evidence:
+      brands: [Miu Miu, Chloé, Loewe]
+      note: '"Yellow punch" at Paris'
+      source: https://www.stylearcade.com/blog/top-trends-from-paris-fashion-week-spring-summer-2027
+
+  - id: ss27_green
+    label: Many shades of green
+    season: SS27
+    # Phrases, not bare "green": alone it matches climate and finance news.
+    query_terms: ["green dress", "green skirt", "green coat", "emerald green", "mint green"]
+    evidence:
+      brands: [Chanel, Prada, Loewe]
+      source: https://fashionunited.com/specials/spring-summer-2027-fashion-trends
+
+  - id: ss27_metallics
+    label: Metallics
+    season: SS27
+    query_terms: ["metallic", "lamé"]
+    context: ["dress", "skirt", "fashion"]
+    evidence:
+      brands: [Saint Laurent, Dior, Balmain]
+      source: https://fashionunited.com/specials/spring-summer-2027-fashion-trends
+
+  - id: ss27_double_denim
+    label: Double denim
+    season: SS27
+    query_terms: ["double denim", "denim on denim", "Canadian tuxedo"]
+    evidence:
+      brands: [Zimmermann, Conner Ives]
+      source: https://fashionunited.com/specials/spring-summer-2027-fashion-trends
+
+  - id: ss27_skirts
+    label: Skirts over pants
+    season: SS27
+    query_terms: ["full skirt", "midi skirt", "knee-length skirt", "pleated skirt"]
+    evidence:
+      brands: [Prada, Jil Sander, Marni, MSGM, Moschino]
+      note: '"Skirts Are Everywhere for SS27" at Milan'
+      source: https://imfirenzedigest.com/2026/10/09/milan-fashion-week-ss27-trends/
+
+  - id: ss27_bra_tops
+    label: Bra tops
+    season: SS27
+    query_terms: ["bra top", "exposed bra", "bralette"]
+    evidence:
+      brands: [Prada, Fendi, Etro, Alberta Ferretti]
+      note: '"Bra Tops Take Over the Runway" at Milan'
+      source: https://imfirenzedigest.com/2026/10/09/milan-fashion-week-ss27-trends/

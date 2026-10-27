@@ -38,6 +38,11 @@ log = logging.getLogger("synthetic_retailer")
 PRODUCTS_FILE = "products.parquet"
 INVENTORY_FILE = "inventory_weekly.parquet"
 SEARCHES_FILE = "site_searches.parquet"
+# Simulation ground truth: what shoppers wanted, before stock capped it. No
+# real retailer has this file, so nothing in dbt reads it -- the lag analysis
+# must work from searches and sales alone. Only the planning backtest uses it,
+# to score a buy plan against true demand.
+DEMAND_TRUTH_FILE = "demand_truth.parquet"
 MANIFEST_FILE = "manifest.json"
 
 
@@ -67,11 +72,14 @@ def generate(
     first_term = {t.id: t.query_terms[0] for t in trends.trends}
     neutral = pd.Series(1.0, index=calendar)
 
-    inventory_rows, search_rows = [], []
+    inventory_rows, search_rows, demand_rows = [], [], []
     for p in cfg.products:
-        index = trend_index(drivers[p.trend_id], cfg.planted_lag_weeks) if p.trend_id else neutral
+        index = trend_index(drivers[p.trend_id], cfg.lag_for(p)) if p.trend_id else neutral
         multiplier = np.maximum(cfg.demand.floor, 1.0 + cfg.demand.beta * (index.to_numpy() - 1.0))
         demand_total = rng.poisson(p.base_weekly_units * multiplier)
+        demand_rows += [
+            {"week_start": w, "sku_id": p.sku_id, "units_demanded": int(d)} for w, d in zip(calendar, demand_total)
+        ]
 
         # Inventory per size: start at par, top back up to par every N weeks.
         par = {s: math.ceil(p.base_weekly_units * cfg.size_curve[s] * cfg.inventory.par_weeks_of_cover) for s in sizes}
@@ -111,6 +119,7 @@ def generate(
         PRODUCTS_FILE: products,
         INVENTORY_FILE: pd.DataFrame(inventory_rows),
         SEARCHES_FILE: pd.DataFrame(search_rows),
+        DEMAND_TRUTH_FILE: pd.DataFrame(demand_rows),
     }
 
 

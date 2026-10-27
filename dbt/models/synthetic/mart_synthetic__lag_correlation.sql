@@ -9,10 +9,11 @@
 -- Nothing here knows the planted lag; mart_synthetic__recovered_lag checks
 -- whether it falls out of the data.
 --
--- Trend-tagged skus are tested against their own trend. Core skus are tested
--- against EVERY trend: they are the negative control, and testing them
--- 14 trends x 3 tiers x 13 lags times means some will correlate by chance.
--- That is the comparison to make, not "is the correlation non-zero".
+-- Every sku is tested against EVERY trend. Its own trend is the real test;
+-- the other 13 are decoys -- press with the same spiky shape that has nothing
+-- to do with this product -- and core skus (no trend at all) are tested
+-- against all 14. With this many tries some decoys correlate by chance, and
+-- that is the comparison to make, not "is the correlation non-zero".
 
 with share as (
 
@@ -42,16 +43,12 @@ products as (
 
 pairs as (
 
-    select sku_id, trend_id as candidate_trend_id, true as is_own_trend
-    from products
-    where trend_id is not null
-
-    union all
-
-    select p.sku_id, t.trend_id, false
+    select
+        p.sku_id,
+        t.trend_id as candidate_trend_id,
+        coalesce(p.trend_id = t.trend_id, false) as is_own_trend
     from products as p
     cross join (select distinct trend_id from share) as t
-    where p.trend_id is null
 
 ),
 

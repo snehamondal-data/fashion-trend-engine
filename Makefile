@@ -1,9 +1,14 @@
-.PHONY: ingest transform transform-dbt synthetic dashboard analyze charts all test clean agent eval eval-dry
+.PHONY: ingest ingest-watchlist transform transform-dbt synthetic planning dashboard analyze charts all test clean agent eval eval-dry
 
 VENV := .venv/bin
 
 ingest:
 	$(VENV)/python -m src.ingest_gdelt
+
+# SS27 forward watchlist: same 60 queries, pinned to the window around the
+# SS27 shows, cached separately in data/raw_watchlist/. Resumable.
+ingest-watchlist:
+	$(VENV)/python -m src.ingest_gdelt --watchlist
 
 transform:
 	$(VENV)/python -m src.transform
@@ -22,8 +27,13 @@ synthetic:
 	$(VENV)/python -m src.synthetic_retailer
 	$(VENV)/dbt build --project-dir dbt --profiles-dir dbt --select tag:synthetic
 
+# Momentum, buy plan, launch timing, backtest (simulated) and the SS27
+# watchlist (real press) -> data/output/planning/. Run after synthetic.
+planning:
+	$(VENV)/python -m src.planning
+
 # Static dashboard for GitHub Pages: marts + warehouse -> docs/index.html.
-# Run after synthetic and analyze.
+# Run after analyze and planning.
 dashboard:
 	$(VENV)/python -m src.dashboard
 

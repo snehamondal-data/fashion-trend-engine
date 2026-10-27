@@ -3,17 +3,33 @@
 -- Per trend-tagged sku and tier: the lag at which press momentum best
 -- predicts demand, measured on searches (uncensored) and on units sold
 -- (capped by stock). If the method works, the driver tier's best lag on
--- searches equals planted_lag_weeks in config/synthetic_retailer.yaml.
+-- searches equals the planted lag in config/synthetic_retailer.yaml.
 --
--- noise_ceiling: the strongest correlation any core sku reached against any
--- trend, tier or lag -- what pure chance produces in this many tries. A
--- recovered lag only counts if it clears that.
+-- noise_ceiling: the strongest correlation chance produced for THIS sku --
+-- its demand against the 13 other trends' press (any tier, any lag) -- or
+-- any core sku reached against any trend. A recovered lag only counts if
+-- its own trend beats every decoy.
+--
+-- Why per sku, not just the core skus: a trend sku's demand is spiky like
+-- press is, and two unrelated spiky series correlate by chance far more
+-- often than spiky press and flat core demand do. A core-only ceiling was
+-- too low: the null test (tests/test_synthetic_retailer.py) caught it.
 
-with noise as (
+with core as (
 
-    select max(corr_searches) as noise_ceiling
+    select max(lc.corr_searches) as core_ceiling
+    from {{ ref('mart_synthetic__lag_correlation') }} as lc
+    inner join {{ ref('stg_synthetic__products') }} as p using (sku_id)
+    where p.trend_id is null
+
+),
+
+decoys as (
+
+    select sku_id, max(corr_searches) as decoy_ceiling
     from {{ ref('mart_synthetic__lag_correlation') }}
     where not is_own_trend
+    group by 1
 
 ),
 
@@ -36,7 +52,8 @@ own as (
 
 select
     own.*,
-    noise.noise_ceiling,
-    own.best_corr_searches > noise.noise_ceiling as clears_noise_ceiling
+    greatest(decoys.decoy_ceiling, core.core_ceiling) as noise_ceiling,
+    own.best_corr_searches > greatest(decoys.decoy_ceiling, core.core_ceiling) as clears_noise_ceiling
 from own
-cross join noise
+inner join decoys using (sku_id)
+cross join core

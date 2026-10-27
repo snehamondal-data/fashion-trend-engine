@@ -3,7 +3,7 @@
 Static on purpose: it's served by GitHub Pages straight from docs/, so anyone
 with the link can read it without running Python. The data is embedded as
 JSON -- weekly article-count shares (no article content) and Sage & Blush
-numbers, which are synthetic.
+numbers, which are SIMULATED and labelled so on the page.
 
 Every number on the page is computed here from the marts; the template holds
 no hard-coded findings, so a rebuild after new data can't leave stale claims.
@@ -15,16 +15,20 @@ import json
 import logging
 import math
 from pathlib import Path
+from typing import Optional
 
 import duckdb
 import pandas as pd
 
 from src.analyze import share_series, tier_calendar
 from src.config import (
+    PLANNING_DIR,
     ROOT,
+    SEASON_SHOWS,
     TIERS,
     TREND_DIFFUSION_CSV,
     WAREHOUSE_PATH,
+    WATCHLIST_SEASON,
     WEEKLY_BASELINE_PATH,
     WEEKLY_MENTIONS_PATH,
 )
@@ -44,7 +48,13 @@ TIER_LABELS = {
 # Fixed categorical slots: color follows the tier, never its position.
 TIER_SLOTS = {"luxury": 1, "semi_luxury": 2, "affordable": 3, "mid_market": 4}
 
-FW26 = ("2026-02-02", "2026-03-30")  # Mondays bracketing the FW26 show weeks
+FW26 = SEASON_SHOWS["FW26"]
+
+# "Always on": a trend whose typical week in one tier is at least ALWAYS_ON_SHARE
+# of that tier's coverage and ALWAYS_ON_RATIO times its typical week anywhere
+# else. Breakout detection can't see these -- they never break out (suede).
+ALWAYS_ON_SHARE = 5.0  # percent
+ALWAYS_ON_RATIO = 3.0
 
 
 def _clean(v):
@@ -72,12 +82,55 @@ def _index(values: pd.Series) -> list:
     return [_clean(round(v / mean * 100, 1)) for v in values]
 
 
+def always_on(share: dict, tiers: list) -> list:
+    """Trends that sit high in one tier every week rather than spiking."""
+    out = []
+    for trend_id, by_tier in share.items():
+        medians = {t: pd.Series(by_tier[t], dtype=float).median(skipna=True) for t in tiers}
+        for tier, med in medians.items():
+            others = [v for t, v in medians.items() if t != tier and pd.notna(v)]
+            if pd.notna(med) and med >= ALWAYS_ON_SHARE and others and med >= ALWAYS_ON_RATIO * max(max(others), 1e-9):
+                out.append({"id": trend_id, "tier": tier, "median": round(float(med), 1), "others": round(float(max(others)), 1)})
+    return out
+
+
+def planning_payload(planning_dir: Path) -> dict:
+    """Outputs of src/planning.py. Watchlist momentum is real press; the
+    backtest and plan are for the simulated retailer."""
+    watch = pd.read_csv(planning_dir / f"watchlist_{WATCHLIST_SEASON}.csv")
+    backtest = pd.read_csv(planning_dir / "simulated_backtest_FW26.csv")
+    now_path = planning_dir / "in_season_now.csv"
+    # Empty until the watchlist window has been fetched.
+    now = pd.read_csv(now_path) if now_path.stat().st_size > 1 else pd.DataFrame()
+    summary = json.loads((planning_dir / "simulated_backtest_summary.json").read_text())
+
+    def rows(df, cols):
+        return [{c: _clean(getattr(r, c)) for c in cols} for r in df.itertuples()]
+
+    return {
+        "season": WATCHLIST_SEASON,
+        "shows": list(SEASON_SHOWS[WATCHLIST_SEASON]),
+        "watchlist": rows(watch, ["trend_id", "tier", "signal", "momentum", "trend_mentions", "breakout_week"]),
+        "backtest": rows(backtest, ["product_name", "trend_id", "signal", "multiplier", "units_without_signal",
+                                    "units_with_signal", "season_demand", "weeks_sold_out_without_signal",
+                                    "weeks_sold_out_with_signal"]),
+        "backtest_summary": summary,
+        "ss27_trends": [{"id": t.id, "label": t.label, "brands": t.evidence.brands, "source": str(t.evidence.source)}
+                        for t in TrendsConfig.from_yaml(season=WATCHLIST_SEASON).trends],
+        "in_season": rows(now, ["trend_id", "label", "product_name", "signal", "momentum", "trend_mentions",
+                                "delay_weeks_simulated", "demand_window_start", "demand_window_end"]) if len(now) else [],
+        "in_season_weeks": {"reference": now["reference_weeks"].iloc[0], "recent": now["recent_weeks"].iloc[0]}
+        if len(now) else None,
+    }
+
+
 def build_payload(
     weekly_mentions: pd.DataFrame,
     weekly_baseline: pd.DataFrame,
     diffusion: pd.DataFrame,
     con: duckdb.DuckDBPyConnection,
     retailer: SyntheticRetailerConfig,
+    planning: Optional[dict] = None,
 ) -> dict:
     trends = TrendsConfig.from_yaml().trends
     tiers = [t for t in TIERS if not tier_calendar(weekly_baseline, t).empty]
@@ -122,7 +175,7 @@ def build_payload(
             "press": _index(press),
             "searches": _index(sw["searches"]),
             "units": _index(sw["units_sold"]),
-            "sold_out_weeks": int(sw["core_size_sold_out"].fillna(False).sum()),
+            "sold_out_weeks": int(sw["core_size_sold_out"].astype("boolean").fillna(False).sum()),
             "lagcorr": [
                 {"lag": int(r.lag_weeks), "r": _clean(round(r.corr_searches, 3)) if pd.notna(r.corr_searches) else None}
                 for r in lagcorr[lagcorr["trend_id"] == trend.id].itertuples()
@@ -131,6 +184,8 @@ def build_payload(
             "best_r": _clean(round(rec["best_corr_searches"], 2)),
             "best_lag_units": _clean(rec["best_lag_units_sold"]),
             "clears": bool(rec["clears_noise_ceiling"]),
+            "ceiling": _clean(round(rec["noise_ceiling"], 2)),
+            "planted": retailer.lag_for(next(p for p in retailer.products if p.trend_id == trend.id)),
         }
 
     lag_cols = {
@@ -154,7 +209,6 @@ def build_payload(
         s = diffusion[col].dropna() if col in diffusion else pd.Series(dtype=float)
         return {"n": int(len(s)), "hits": int((s < 0).sum() if sign < 0 else (s > 0).sum())}
 
-    noise = recovered["noise_ceiling"].iloc[0] if len(recovered) else None
     return {
         "weeks": [w.strftime("%Y-%m-%d") for w in week_index],
         "fw26": list(FW26),
@@ -165,12 +219,13 @@ def build_payload(
         "retailer": retailer.retailer_name,
         "driver_tier": TIER_LABELS[driver],
         "planted_lag": retailer.planted_lag_weeks,
-        "noise_ceiling": _clean(round(noise, 2)) if noise is not None else None,
+        "always_on": always_on(share, tiers),
+        "planning": planning,
         "stats": {
             "trends": len(rows),
             "semi_before_lux": _count("lag_luxury_to_semi_weeks", -1),
             "aff_after_semi": _count("lag_semi_to_affordable_weeks", +1),
-            "recovered": int(sum(1 for v in retail.values() if v["best_lag"] == retailer.planted_lag_weeks and v["clears"])),
+            "recovered": int(sum(1 for v in retail.values() if v["best_lag"] == v["planted"] and v["clears"])),
             "retail_trends": len(retail),
         },
     }
@@ -184,7 +239,13 @@ def render(payload: dict, template: str) -> str:
     return template.replace("/*__DATA__*/", data)
 
 
-def run(out_path: Path = DASHBOARD_PATH, warehouse_path: Path = WAREHOUSE_PATH) -> Path:
+def run(
+    out_path: Path = DASHBOARD_PATH, warehouse_path: Path = WAREHOUSE_PATH, planning_dir: Path = PLANNING_DIR
+) -> Path:
+    try:
+        planning = planning_payload(planning_dir)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Planning outputs missing from {planning_dir}; run `make planning` first: {exc}") from exc
     con = duckdb.connect(str(warehouse_path), read_only=True)
     try:
         payload = build_payload(
@@ -193,6 +254,7 @@ def run(out_path: Path = DASHBOARD_PATH, warehouse_path: Path = WAREHOUSE_PATH) 
             pd.read_csv(TREND_DIFFUSION_CSV),
             con,
             SyntheticRetailerConfig.from_yaml(),
+            planning,
         )
     except duckdb.CatalogException as exc:
         raise RuntimeError(f"Synthetic marts missing from {warehouse_path}; run `make synthetic` first: {exc}") from exc

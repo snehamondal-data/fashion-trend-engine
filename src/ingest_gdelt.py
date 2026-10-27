@@ -2,7 +2,8 @@
 pair plus a brands-only baseline per tier, sequentially, through the cached
 + rate-limited client. Run as:
 
-    python -m src.ingest_gdelt
+    python -m src.ingest_gdelt              # main 12-month dataset -> data/raw/
+    python -m src.ingest_gdelt --watchlist  # pinned recent window, FW26 + SS27 trends -> data/raw_watchlist/
 
 Resumable by construction: the raw cache is durable, so a rerun skips any
 (trend, tier) already fetched and only attempts what's missing. If GDELT
@@ -15,7 +16,15 @@ import logging
 import sys
 from typing import List, Optional, Tuple
 
-from src.config import BASELINE_TREND_ID, MAX_CONSECUTIVE_TASK_FAILURES, TIERS, TIMESPAN
+from src.config import (
+    BASELINE_TREND_ID,
+    MAX_CONSECUTIVE_TASK_FAILURES,
+    RAW_DIR,
+    TIERS,
+    TIMESPAN,
+    WATCHLIST_RAW_DIR,
+    WATCHLIST_TIMESPAN,
+)
 from src.config_models import BrandsConfig, ConfigError, TrendsConfig
 from src.gdelt_client import GDELTClient
 from src.gdelt_models import GDELTResponseError, GDELTRateLimitError
@@ -26,8 +35,8 @@ log = logging.getLogger("ingest_gdelt")
 
 
 def build_tasks(brands: BrandsConfig, trends: TrendsConfig) -> List[Tuple[str, str, str]]:
-    """Return a list of (trend_id, tier, query) tasks: baselines first (3),
-    then every trend x tier combination (in trends.yaml / TIERS order)."""
+    """Return a list of (trend_id, tier, query) tasks: baselines first (one
+    per tier), then every trend x tier combination (in trends.yaml / TIERS order)."""
     tasks: List[Tuple[str, str, str]] = []
     for tier in TIERS:
         tasks.append((BASELINE_TREND_ID, tier, build_baseline_query(brands.tiers[tier])))
@@ -38,24 +47,40 @@ def build_tasks(brands: BrandsConfig, trends: TrendsConfig) -> List[Tuple[str, s
     return tasks
 
 
-def run(limit: Optional[int] = None) -> None:
+# Watchlist fetches one tier at a time, most useful first: semi_luxury drives
+# the buy plan and luxury is the runway, so a throttled, partial run still
+# leaves whole tiers usable rather than every tier half-done.
+WATCHLIST_TIER_ORDER = ("semi_luxury", "luxury", "affordable", "mid_market")
+
+
+def tier_major(tasks: List[Tuple[str, str, str]]) -> List[Tuple[str, str, str]]:
+    return sorted(tasks, key=lambda t: WATCHLIST_TIER_ORDER.index(t[1]))
+
+
+def run(limit: Optional[int] = None, watchlist: bool = False) -> None:
     try:
         brands = BrandsConfig.from_yaml()
-        trends = TrendsConfig.from_yaml()
+        # The watchlist window is the recent past: FW26 trends there are the
+        # "in season now" view, SS27 trends the spring watchlist.
+        trends = TrendsConfig.from_yaml(season=None if watchlist else "FW26")
     except ConfigError as exc:
         log.error("Config validation failed: %s", exc)
         raise SystemExit(1) from exc
 
     tasks = build_tasks(brands, trends)
+    timespan, cache_dir = TIMESPAN, RAW_DIR
+    if watchlist:
+        tasks, timespan, cache_dir = tier_major(tasks), WATCHLIST_TIMESPAN, WATCHLIST_RAW_DIR
     if limit is not None:
         tasks = tasks[:limit]
 
-    client = GDELTClient()
-    already_cached = sum(1 for (t, tier, q) in tasks if client.is_cached(t, tier, q))
+    client = GDELTClient(cache_dir=cache_dir)
+    already_cached = sum(1 for (t, tier, q) in tasks if client.is_cached(t, tier, q, timespan))
     log.info(
-        "Running %d ingest tasks (timespan=%s): %d already cached, %d to fetch",
+        "Running %d ingest tasks (timespan=%s -> %s): %d already cached, %d to fetch",
         len(tasks),
-        TIMESPAN,
+        timespan,
+        cache_dir,
         already_cached,
         len(tasks) - already_cached,
     )
@@ -65,9 +90,9 @@ def run(limit: Optional[int] = None) -> None:
     stopped_early = False
 
     for i, (trend_id, tier, query) in enumerate(tasks, start=1):
-        was_cached = client.is_cached(trend_id, tier, query)
+        was_cached = client.is_cached(trend_id, tier, query, timespan)
         try:
-            cached = client.fetch(trend_id, tier, query)
+            cached = client.fetch(trend_id, tier, query, timespan)
         except GDELTResponseError:
             # Not transient -- a real query/schema bug. Fail loud immediately.
             log.error("Non-retryable failure on trend=%s tier=%s query=%r", trend_id, tier, query)
@@ -111,7 +136,7 @@ def run(limit: Optional[int] = None) -> None:
 
 
 if __name__ == "__main__":
-    limit_arg = None
-    if len(sys.argv) > 1:
-        limit_arg = int(sys.argv[1])
-    run(limit=limit_arg)
+    args = sys.argv[1:]
+    watchlist_arg = "--watchlist" in args
+    args = [a for a in args if a != "--watchlist"]
+    run(limit=int(args[0]) if args else None, watchlist=watchlist_arg)

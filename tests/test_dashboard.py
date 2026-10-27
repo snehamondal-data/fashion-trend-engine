@@ -30,3 +30,15 @@ def test_index_maps_mean_to_100_and_keeps_gaps():
 
     out = dashboard._index(pd.Series([1.0, 3.0, None]))
     assert out == [50.0, 150.0, None]
+
+
+def test_always_on_flags_a_steady_high_share_not_a_spike():
+    tiers = ["luxury", "mid_market"]
+    share = {
+        # suede: ~13% every week in mid-market, ~1.5% in luxury -> always on
+        "suede": {"luxury": [1.5] * 10, "mid_market": [13.0] * 10},
+        # velvet: one huge week, otherwise low -> a spike, not presence
+        "velvet": {"luxury": [1.0] * 10, "mid_market": [0.5] * 9 + [40.0]},
+    }
+    out = dashboard.always_on(share, tiers)
+    assert [(a["id"], a["tier"]) for a in out] == [("suede", "mid_market")]

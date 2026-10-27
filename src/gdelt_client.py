@@ -13,6 +13,7 @@ Two lessons from hitting the live API directly (not just the docs):
 import hashlib
 import json
 import random
+import re
 import time
 from pathlib import Path
 
@@ -39,6 +40,21 @@ from src.gdelt_models import (
     GDELTTimelineResponse,
     GDELTRateLimitError,
 )
+
+
+_ABSOLUTE_WINDOW = re.compile(r"^(\d{14})-(\d{14})$")
+
+
+def time_params(timespan: str) -> dict:
+    """A relative span ("12m") or a pinned window ("YYYYMMDDHHMMSS-YYYYMMDDHHMMSS").
+
+    A relative span ends at fetch time, so the same cache key can hold different
+    weeks depending on when it was fetched. A pinned window can't drift: the
+    dates are part of the query, so they're part of the cache-key hash too."""
+    m = _ABSOLUTE_WINDOW.match(timespan)
+    if m:
+        return {"startdatetime": m.group(1), "enddatetime": m.group(2)}
+    return {"timespan": timespan}
 
 
 class GDELTClient:
@@ -88,7 +104,7 @@ class GDELTClient:
         self._last_request_time = time.monotonic()
 
     def _fetch_with_retry(self, query: str, timespan: str) -> CachedResponse:
-        params = {"query": query, "mode": GDELT_MODE, "format": GDELT_FORMAT, "timespan": timespan}
+        params = {"query": query, "mode": GDELT_MODE, "format": GDELT_FORMAT, **time_params(timespan)}
         last_exc: Exception = GDELTRateLimitError("no attempts made")
 
         for attempt in range(MAX_RETRIES + 1):

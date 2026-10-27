@@ -72,3 +72,49 @@ SIGNAL_ROLLING_WINDOW_WEEKS = 3
 TRAILING_BASELINE_WINDOW_WEEKS = 8
 SIGNAL_FACTOR = 2.0
 SUSTAINED_WEEKS = 2
+
+# --- Planning (src/planning.py) ---
+# Runway seasons: Mondays bracketing the show weeks, New York through Paris.
+# Approximate -- fashion weeks shift by a few days year to year.
+SEASON_SHOWS = {
+    "FW26": ("2026-02-02", "2026-03-30"),
+    "SS27": ("2026-09-07", "2026-10-05"),
+}
+# Momentum compares press share in the "early season" (show weeks plus
+# POST_SHOW_WEEKS after) against the PRE_SHOW_WEEKS just before the shows.
+PRE_SHOW_WEEKS = 8
+POST_SHOW_WEEKS = 2
+# Ratio at or above RISING is "rising", at or below 1/RISING "fading". 1.5x,
+# not 1.1x: a tier's weekly trend counts are small, so modest ratios are noise.
+MOMENTUM_RISING_RATIO = 1.5
+# Fewer trend mentions than this across both windows -> "too little press".
+MIN_MOMENTUM_MENTIONS = 10
+# A week whose tier baseline is under this fraction of the tier's median week
+# (over both windows) is a collection gap, not quiet press: GDELT lost whole
+# days in Sep-Oct 2026 (semi-luxury fell from ~220 articles a week to 0-11).
+# Any such week in either window -> "incomplete_data", never a momentum figure.
+COMPLETE_WEEK_FRACTION = 0.5
+# Buy-plan multiplier = sqrt(momentum), bounded. The square root damps a 4x
+# press jump to a 2x buy; the bounds mean one season's press can never move a
+# buy more than +50% / -25%. Flat or too-little-press trends get exactly 1.0.
+PLAN_MULTIPLIER_MIN = 0.75
+PLAN_MULTIPLIER_MAX = 1.5
+# Launch timing, relative to the week demand is expected to arrive.
+STOCK_LEAD_WEEKS = 1      # stock on shelf one week before demand
+MARKETING_LEAD_WEEKS = 2  # campaign starts two weeks before demand
+
+# Forward watchlist: SS27 shows are after the main 12-month fetch ended, so
+# the watchlist has its own pinned-window fetch in its own cache directory,
+# for both FW26 trends (the in-season view) and SS27 trends (trends.yaml).
+# transform.py and dbt glob data/raw/*.json only, so these never mix into the
+# main marts. Window = PRE_SHOW_WEEKS before the shows -> the last full week.
+WATCHLIST_SEASON = "SS27"
+WATCHLIST_RAW_DIR = DATA_DIR / "raw_watchlist"
+WATCHLIST_TIMESPAN = "20260713000000-20261025235959"
+PLANNING_DIR = OUTPUT_DIR / "planning"
+
+# "In season now": FW26 trends whose press rose in the last IN_SEASON_RECENT_WEEKS
+# complete weeks of the watchlist window, against the IN_SEASON_REFERENCE_WEEKS
+# before. Same rising/fading thresholds as the post-show momentum.
+IN_SEASON_RECENT_WEEKS = 4
+IN_SEASON_REFERENCE_WEEKS = 8

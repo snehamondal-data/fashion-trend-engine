@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Union
 import yaml
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
-from src.config import BRANDS_YAML, SYNTHETIC_RETAILER_YAML, TIERS, TRENDS_YAML
+from src.config import BRANDS_YAML, SEASON_SHOWS, SYNTHETIC_RETAILER_YAML, TIERS, TRENDS_YAML
 
 
 class ConfigError(Exception):
@@ -87,6 +87,10 @@ class Trend(BaseModel):
     query_terms: List[str] = Field(min_length=1)
     context: Optional[List[str]] = None
     evidence: TrendEvidence
+    # Which runway season the trend came from. The main pipeline (ingest,
+    # analyze, Sage & Blush, agent) tracks FW26; SS27 trends exist only for
+    # the forward watchlist, whose fetch window starts after the main one ends.
+    season: str = "FW26"
 
     @field_validator("query_terms")
     @classmethod
@@ -109,8 +113,16 @@ class TrendsConfig(BaseModel):
             raise ValueError("trends.yaml has no trends")
         return self
 
+    def for_season(self, season: Optional[str]) -> "TrendsConfig":
+        if season is None:
+            return self
+        return TrendsConfig.model_construct(trends=[t for t in self.trends if t.season == season])
+
     @classmethod
-    def from_yaml(cls, path: Path = TRENDS_YAML) -> "TrendsConfig":
+    def from_yaml(cls, path: Path = TRENDS_YAML, season: Optional[str] = "FW26") -> "TrendsConfig":
+        """The trends for one season (FW26 by default, so every existing caller
+        keeps the dataset it was built on); season=None for all of them.
+        The whole file is validated either way."""
         try:
             raw = yaml.safe_load(path.read_text())
         except (OSError, yaml.YAMLError) as exc:
@@ -118,9 +130,15 @@ class TrendsConfig(BaseModel):
         if not isinstance(raw, dict) or "trends" not in raw:
             raise ConfigError(f"{path} did not parse to a mapping with a top-level 'trends' key")
         try:
-            return cls.model_validate(raw)
+            cfg = cls.model_validate(raw)
         except Exception as exc:
             raise ConfigError(f"{path} failed schema validation: {exc}") from exc
+        unknown = sorted({t.season for t in cfg.trends} - set(SEASON_SHOWS))
+        if unknown:
+            raise ConfigError(f"{path} has trends for unknown seasons {unknown}; add them to SEASON_SHOWS")
+        if season is not None and season not in SEASON_SHOWS:
+            raise ConfigError(f"unknown season {season!r}; expected one of {sorted(SEASON_SHOWS)}")
+        return cfg.for_season(season)
 
 
 # --- synthetic_retailer.yaml ---
@@ -148,6 +166,9 @@ class SyntheticProduct(BaseModel):
     price: float = Field(gt=0)
     base_weekly_units: float = Field(gt=0)
     search_term: str
+    # Overrides the retailer-wide planted_lag_weeks for this product, so a
+    # test can plant a different delay per product and demand each one back.
+    planted_lag_weeks: Optional[int] = Field(default=None, ge=0, le=26)
 
 
 class SyntheticRetailerConfig(BaseModel):
@@ -175,6 +196,10 @@ class SyntheticRetailerConfig(BaseModel):
         if all(p.trend_id is not None for p in self.products):
             raise ValueError("no core (trend_id: null) products: the negative control is missing")
         return self
+
+    def lag_for(self, product: SyntheticProduct) -> int:
+        """The delay actually planted for this product."""
+        return self.planted_lag_weeks if product.planted_lag_weeks is None else product.planted_lag_weeks
 
     @classmethod
     def from_yaml(
