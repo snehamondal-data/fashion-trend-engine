@@ -70,6 +70,9 @@ def test_dbt_matches_python_transform(tmp_path, raw_dir, run_dbt):
         (f"{WEEK3_MON}T000000Z", 50.0, 1.0),
     ], fetched_at="2026-02-01T12:00:00Z")
     _write_raw(raw_dir, "_baseline", "affordable", [(f"{WEEK1_MON}T000000Z", 40.0, 1.0)])
+    # Below MIN_BASELINE_ARTICLES: 3 of 3 articles mentioning a trend is not a 100% share.
+    _write_raw(raw_dir, "_baseline", "semi_luxury", [(f"{WEEK1_MON}T000000Z", 3.0, 1.0)])
+    _write_raw(raw_dir, "suede", "semi_luxury", [(f"{WEEK1_MON}T000000Z", 3.0, 1.0)])
     _write_raw(raw_dir, "suede", "luxury", [
         (f"{WEEK1_MON}T000000Z", 10.0, 1.0),
         (f"{WEEK1_MON}T120000Z", 5.0, 1.0),
@@ -92,6 +95,15 @@ def test_dbt_matches_python_transform(tmp_path, raw_dir, run_dbt):
 
     wm = pd.read_parquet(db_dir / "weekly_mentions_path.parquet").set_index(["tier", "week_start"])
     assert math.isnan(wm.loc[("luxury", pd.Timestamp(WEEK2_MON)), "trend_share"])
+    assert math.isnan(wm.loc[("semi_luxury", pd.Timestamp(WEEK1_MON)), "trend_share"])
+
+
+def test_min_baseline_threshold_matches_between_python_and_dbt():
+    import yaml
+    from src.config import MIN_BASELINE_ARTICLES
+
+    project = yaml.safe_load((Path(__file__).resolve().parent.parent / "dbt" / "dbt_project.yml").read_text())
+    assert project["vars"]["min_baseline_articles"] == MIN_BASELINE_ARTICLES
 
 
 def test_dbt_build_fails_on_orphaned_cache_file(tmp_path, raw_dir, run_dbt):

@@ -19,8 +19,12 @@ select
     w.week_start,
     w.mention_count,
     b.baseline_mention_count,
-    -- A missing or zero baseline is an undefined share: NULL, never inf.
-    w.mention_count / nullif(b.baseline_mention_count, 0) as trend_share
+    -- A missing, zero or too-thin baseline is an undefined share: NULL, never
+    -- inf, and never a 1-article "100%".
+    case
+        when b.baseline_mention_count >= {{ var('min_baseline_articles') }}
+            then w.mention_count / b.baseline_mention_count
+    end as trend_share
 from weekly as w
 left join {{ ref('fct_weekly_baseline') }} as b
     using (tier, week_start)

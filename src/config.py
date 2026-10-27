@@ -57,6 +57,12 @@ BASELINE_TREND_ID = "_baseline"
 # keeps it out of the luxury -> semi -> affordable classification.
 TIERS = ("luxury", "semi_luxury", "mid_market", "affordable")
 
+# A week whose tier baseline has fewer articles than this gets an undefined
+# (NaN) trend_share, same as a zero-baseline week. Found on mid_market, whose
+# partial first week held 1 article -- 1 of 1 mentioned suede, a "100%" share
+# that is noise, not signal. Mirrored by dbt var min_baseline_articles.
+MIN_BASELINE_ARTICLES = 5
+
 # --- Sustained-signal detection (analyze.py) ---
 # A week is "elevated" if its 3-week rolling mean share exceeds the trailing
 # median share (over the preceding TRAILING_BASELINE_WINDOW_WEEKS weeks) by

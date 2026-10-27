@@ -13,11 +13,11 @@ import logging
 from pathlib import Path
 from typing import List
 
-import numpy as np
 import pandas as pd
 
 from src.config import (
     BASELINE_TREND_ID,
+    MIN_BASELINE_ARTICLES,
     RAW_DIR,
     STAGING_BASELINE_PATH,
     STAGING_MENTIONS_PATH,
@@ -115,10 +115,12 @@ def weekly_mentions(mentions_staging: pd.DataFrame, weekly_baseline_df: pd.DataF
         .rename(columns={"value": "mention_count"})
     )
     merged = weekly.merge(weekly_baseline_df, on=["tier", "week_start"], how="left")
-    # A missing or zero baseline for a week yields an undefined (NaN) share,
-    # never inf/crash from a divide-by-zero. np.nan (not pd.NA) keeps this a
-    # plain float64 column so downstream rolling/median math works normally.
-    safe_baseline = merged["baseline_mention_count"].astype(float).replace(0.0, np.nan)
+    # A missing, zero or too-thin baseline for a week yields an undefined (NaN)
+    # share, never inf/crash from a divide-by-zero or a 1-article "100%".
+    # .where() gives NaN (not pd.NA), keeping a plain float64 column so downstream
+    # rolling/median math works normally.
+    baseline = merged["baseline_mention_count"].astype(float)
+    safe_baseline = baseline.where(baseline >= MIN_BASELINE_ARTICLES)
     merged["trend_share"] = merged["mention_count"] / safe_baseline
     return merged.sort_values(["trend_id", "tier", "week_start"]).reset_index(drop=True)
 
