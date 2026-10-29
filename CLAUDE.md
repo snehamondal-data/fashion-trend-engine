@@ -162,8 +162,8 @@ full rate-limited sweep.
 - **Watchlist fetch** is separate: `make ingest-watchlist` → `data/raw_watchlist/` (92 queries), pinned window
   `WATCHLIST_TIMESPAN` (a `YYYYMMDDHHMMSS-YYYYMMDDHHMMSS` timespan → GDELT start/enddatetime, part
   of the cache key). Never put these files in `data/raw/`: transform/dbt glob it and would sum them.
-  Status 2026-10-27: 68/92 cached. Missing: all of mid_market except baseline/purple/shearling,
-  ss27_metallics in every tier, and 1 more affordable. Rerun `make ingest-watchlist` to resume.
+  Status 2026-10-29: all 92/92 cached (the last 24 came via a phone hotspot after GDELT throttled
+  the home network). Every reading is still `incomplete_data` because of the Sep–Oct gap weeks.
 - **Noise ceiling is per product**: own trend must beat the 13 decoy trends' press (all tiers/lags)
   and the core skus. The old core-only ceiling was too low for spiky demand; the null test caught it.
   Measured false-positive rate ~3% per product. Don't go back to a core-only ceiling.
