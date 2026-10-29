@@ -66,3 +66,13 @@ def test_build_trend_query_uses_search_term_not_name():
 def test_build_baseline_query_is_brands_only():
     tier_brands = [Brand(name="Chanel", search_term="Chanel"), Brand(name="Prada", search_term="Prada")]
     assert build_baseline_query(tier_brands) == "(Chanel OR Prada)"
+
+
+def test_configured_trend_terms_are_ascii():
+    # GDELT's handling of accented terms is unverified ("lamé" never fetched),
+    # so trends.yaml sticks to ASCII until one is confirmed working live.
+    from src.config_models import TrendsConfig
+
+    for trend in TrendsConfig.from_yaml(season=None).trends:
+        for term in trend.query_terms + (trend.context or []):
+            assert term.isascii(), f"{trend.id}: non-ASCII query term {term!r}"

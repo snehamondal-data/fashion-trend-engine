@@ -153,7 +153,10 @@ trends:
   - id: ss27_metallics
     label: Metallics
     season: SS27
-    query_terms: ["metallic", "lamé"]
+    # Plain "lame", not "lamé": the URL encoding is correct (UTF-8, %C3%A9), but
+    # every metallics fetch failed and GDELT's accent handling is unverified.
+    # "lame" is also an everyday word; the context terms keep it to fashion.
+    query_terms: ["metallic", "lame"]
     context: ["dress", "skirt", "fashion"]
     evidence:
       brands: [Saint Laurent, Dior, Balmain]

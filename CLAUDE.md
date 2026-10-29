@@ -135,7 +135,7 @@ full rate-limited sweep.
 - **All 60 queries cached** (mid_market landed 2026-10-27). 4 tiers; `mid_market` = footwear &
   accessories, measured but excluded from classification. 12 trends `mass`, 2 (`suede`,
   `shearling_texture`) `spreading`.
-- Everything runs clean; `make dashboard` writes `docs/index.html` (GitHub Pages). **115 tests pass**
+- Everything runs clean; `make dashboard` writes `docs/index.html` (GitHub Pages). **117 tests pass**
   (run under `arch -x86_64`: the venv is Intel).
 - dbt port matches `transform.py` exactly (values + dtypes); `trend_diffusion.csv` byte-identical.
 - Synthetic layer: the 6-week planted lag is recovered for 14/14 trends on searches at the semi-luxury
