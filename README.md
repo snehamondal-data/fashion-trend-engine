@@ -4,6 +4,26 @@
 
 **[Open the interactive dashboard →](https://snehamondal-data.github.io/fashion-trend-engine/)**
 
+**In one minute**
+- Fashion brands order stock months ahead, so they want early signs of what shoppers will want.
+- This project counts how often news articles mention 14 fall 2026 trends, week by week, for four
+  kinds of brands: luxury, semi-luxury, mid-market shoes and bags, and high-street.
+- It checks the old idea that trends start at luxury and trickle down. Mostly they didn't:
+  semi-luxury brands were often written about first (6 of 9 trends).
+- It turns press buzz into a simple plan (which trends to order more or less of, and when to market
+  them), tested on a made-up store, because no real store's sales data is public.
+- When the news data has gaps, it says "Incomplete data" instead of guessing.
+
+**What people in fashion already know.** Fall looks a lot alike every year: suede and suede boots,
+fur and fur trim, shearling and Mongolian-lamb coats, tapestry coats, and colours like
+brown, olive, green, pink and burgundy. Even "new" trends are often old styles renamed: the coat now
+sold as the "Penny Lane coat" follows Afghan coats and silk, kimono-style coats with fur trim at the
+collar and cuffs, styles that have been around for decades. This project covers one season, so it
+can't prove that fall repeats year over year, but the data fits it. Suede, for example, sits at a
+steady share of mid-market shoe and bag coverage all year and never "breaks out". So the useful
+question for a brand isn't only "what's new on the runway?" but "which of the usual fall staples is
+gaining or fading this year, and when will shoppers want it?"
+
 **The problem.** A clothing brand decides what to make, and how much, months before anyone buys it.
 Guess wrong and it's left with racks of unsold stock, or sold-out bestsellers it can't restock in
 time.
